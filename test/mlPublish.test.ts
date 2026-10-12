@@ -134,3 +134,133 @@ test('se so a descricao falhar, o anuncio criado nao se perde e o aviso aparece'
   assert.match(r.message!, /descricao nao subiu/);
   assert.match(r.message!, /plain text/);
 });
+
+// ---- pre-checagem: envio, tipo de anuncio, conta e atributos -------------
+
+const { chooseListingType, chooseShipping } = await import('../src/channels/mercadolivre/preflight.ts');
+
+/** ML falso de uma conta comum: me2 ativo, tudo liberado. `over` troca rotas pelo final do caminho. */
+function contaMl(over: Record<string, { status: number; body?: unknown }> = {}) {
+  const rotas: Record<string, { status: number; body?: unknown }> = {
+    '/domain_discovery/search': { status: 200, body: [{ category_id: 'MLB11172' }] },
+    '/users/me': { status: 200, body: { id: 42, status: { list: { allow: true, codes: [] }, sell: { allow: true, codes: [] } } } },
+    '/users/42/shipping_preferences': { status: 200, body: { modes: ['custom', 'not_specified', 'me2'], local_pick_up: true } },
+    '/users/42/available_listing_types': { status: 200, body: { available: [{ id: 'gold_special' }, { id: 'free' }] } },
+    '/categories/MLB11172/attributes': { status: 200, body: [] },
+    '/items/validate': { status: 204 },
+    ...over,
+  };
+  stubMl((url) => {
+    const path = new URL(url).pathname;
+    const chave = Object.keys(rotas).find((k) => path.endsWith(k));
+    return chave ? rotas[chave]! : { status: 404, body: { message: 'rota nao simulada ' + path } };
+  });
+}
+
+const enviadoAoValidate = () =>
+  chamadas.find((c) => new URL(c.url).pathname === '/items/validate')!.body as Record<string, any>;
+
+test('o anuncio vai com o envio da conta (me2) -- sem ele o ML caiu no me1 e recusou', async () => {
+  contaMl();
+  const r = await mercadoLivre.publish({ product: produto, dryRun: true });
+
+  assert.equal(r.status, 'rascunho', r.message);
+  const corpo = enviadoAoValidate();
+  assert.deepEqual(corpo.shipping, { mode: 'me2', local_pick_up: true, free_shipping: true, free_methods: [] });
+  assert.equal(corpo.listing_type_id, 'gold_special');
+  // R$ 1.200: acima de R$ 79 o frete gratis e obrigatorio, e o vendedor e avisado do custo
+  assert.match(r.message!, /frete gratis/);
+});
+
+test('produto barato no me2 nao promete frete gratis', async () => {
+  contaMl();
+  await mercadoLivre.publish({ product: { ...produto, priceCents: 5000 }, dryRun: true });
+  assert.equal(enviadoAoValidate().shipping.free_shipping, false);
+});
+
+test('conta sem Mercado Envios: frete a combinar, com aviso de como ativar', async () => {
+  contaMl({ '/users/42/shipping_preferences': { status: 200, body: { modes: ['custom', 'not_specified'] } } });
+  const r = await mercadoLivre.publish({ product: produto, dryRun: true });
+
+  assert.deepEqual(enviadoAoValidate().shipping, { mode: 'not_specified', local_pick_up: true, free_shipping: false });
+  assert.match(r.message!, /nao tem Mercado Envios/);
+});
+
+test('se nao der para ler as preferencias de envio, vai me2 (o que quase toda conta tem)', async () => {
+  contaMl({ '/users/42/shipping_preferences': { status: 500, body: { message: 'boom' } } });
+  const r = await mercadoLivre.publish({ product: produto, dryRun: true });
+  assert.equal(r.status, 'rascunho');
+  assert.equal(enviadoAoValidate().shipping.mode, 'me2');
+});
+
+test('a recusa real do ML (lost_me1_by_user) chega traduzida', async () => {
+  contaMl({
+    '/items/validate': {
+      status: 400,
+      body: {
+        cause: [{ department: 'shipping', cause_id: 4053, type: 'warning', code: 'shipping.lost_me1_by_user',
+          references: ['user.shipping_preferences.modes'], message: 'User has not mode me1' }],
+        message: 'Validation error', error: 'validation_error', status: 400,
+      },
+    },
+  });
+  const r = await mercadoLivre.publish({ product: produto, dryRun: true });
+  assert.equal(r.status, 'erro');
+  assert.match(r.message!, /^o Mercado Livre recusaria este anuncio: O ML tentou usar um modo de envio \(me1\)/);
+  assert.match(r.message!, /User has not mode me1/);
+});
+
+test('tudo o que falta aparece de uma vez: conta, atributo da categoria e o erro do ML', async () => {
+  contaMl({
+    '/users/me': { status: 200, body: { id: 42, status: { list: { allow: false, codes: ['address_pending'] } } } },
+    '/categories/MLB11172/attributes': { status: 200, body: [
+      { id: 'BRAND', name: 'Marca', value_type: 'string', tags: { required: true } },
+      { id: 'VOLTAGE', name: 'Voltagem', value_type: 'list', tags: { required: true } },
+      { id: 'COLOR', name: 'Cor', value_type: 'string', tags: {} },
+    ] },
+    '/items/validate': { status: 400, body: { message: 'Validation error', cause: [
+      { code: 'item.attributes.missing_required', message: 'The attributes [VOLTAGE] are required' },
+      { code: 'item.price.invalid', message: 'price too low' },
+    ] } },
+  });
+  const r = await mercadoLivre.publish({ product: produto, dryRun: true });
+
+  assert.equal(r.status, 'erro');
+  assert.match(r.message!, /\(1\) O ML nao deixa esta conta anunciar \(endereco pendente\)/);
+  assert.match(r.message!, /\(2\) Abra "Atributos do Mercado Livre" no produto e preencha: Voltagem\./);
+  assert.match(r.message!, /preco nao foi aceito/);
+  // VOLTAGE ja foi cobrado pela pre-checagem: nao repete com o id cru
+  assert.equal(/preencha: VOLTAGE/.test(r.message!), false, r.message);
+  // BRAND ja vem do cadastro (Sony): nao e cobrado
+  assert.equal(/Marca/.test(r.message!), false);
+});
+
+test('publicacao real tambem leva o envio escolhido', async () => {
+  contaMl({
+    '/items': { status: 201, body: { id: 'MLB777', permalink: 'https://ml/MLB777' } },
+    '/items/MLB777/description': { status: 201, body: {} },
+  });
+  const r = await mercadoLivre.publish({ product: produto, dryRun: false });
+  assert.equal(r.status, 'publicado', r.message);
+  const criacao = chamadas.find((c) => new URL(c.url).pathname === '/items')!.body as Record<string, any>;
+  assert.equal(criacao.shipping.mode, 'me2');
+});
+
+test('tipo de anuncio indisponivel na conta: cai no melhor disponivel e avisa', () => {
+  assert.deepEqual(chooseListingType('gold_special', undefined), { id: 'gold_special' });
+  assert.deepEqual(chooseListingType('gold_special', ['gold_special', 'free']), { id: 'gold_special' });
+  const r = chooseListingType('gold_special', ['free', 'gold_pro']);
+  assert.equal(r.id, 'gold_pro');
+  assert.match(r.aviso!, /nao esta disponivel/);
+});
+
+test('veiculo e imovel nao levam shipping', () => {
+  const r = chooseShipping({ ...produto, kind: 'veiculo' }, { modes: ['me2'] });
+  assert.equal(r.shipping, undefined);
+});
+
+test('conta sem nenhum modo utilizavel e bloqueio explicado', () => {
+  const r = chooseShipping(produto, { modes: ['me1'] });
+  assert.equal(r.shipping, undefined);
+  assert.match(r.problemas[0]!, /Ative o Mercado Envios/);
+});

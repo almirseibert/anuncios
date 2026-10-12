@@ -101,9 +101,21 @@ test('cadastro e categoria juntos geram as duas instrucoes', () => {
   assert.match(dica, /VOLTAGE, COLOR/);
 });
 
-test('aviso do ML (warning) nao vira instrucao', () => {
-  const soAviso = { cause: [{ type: 'warning', code: 'shipping.lost_me1_by_user', message: 'User has not mode me1' }] };
-  assert.equal(dicaDoErro(soAviso), undefined);
+test('aviso do ML tambem bloqueia: lost_me1_by_user, unica causa de um 400 real, vira instrucao', () => {
+  // resposta exata do ML em producao: "warning", mas o anuncio foi recusado
+  const soAviso = {
+    cause: [{
+      department: 'shipping', cause_id: 4053, type: 'warning', code: 'shipping.lost_me1_by_user',
+      references: ['user.shipping_preferences.modes'], message: 'User has not mode me1',
+    }],
+    message: 'Validation error', error: 'validation_error', status: 400,
+  };
+  assert.match(dicaDoErro(soAviso)!, /modo de envio \(me1\).*Mercado Envios/);
+});
+
+test('atributo que a pre-checagem ja cobrou nao aparece duas vezes', () => {
+  const erro = { cause: [{ code: 'item.attributes.missing_required', message: 'The attributes [VOLTAGE] are required' }] };
+  assert.equal(dicaDoErro(erro, new Set(['VOLTAGE'])), undefined);
 });
 
 test('erro de outro tipo nao ganha dica inventada', () => {

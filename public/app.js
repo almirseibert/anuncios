@@ -623,7 +623,7 @@ $('#det-corpo').addEventListener('click', async (ev) => {
             ${r.dryRun ? '<span class="pill">simulação</span>' : ''}
             ${r.permalink ? `<a href="${esc(r.permalink)}" target="_blank" rel="noopener">abrir anúncio</a>` : ''}
           </div>
-          ${r.message ? `<div class="muted">${esc(r.message)}</div>` : ''}
+          ${r.message ? `<div class="muted" style="white-space: pre-line">${esc(r.message)}</div>` : ''}
           ${r.channel === 'mercadolivre' && /Atributos do Mercado Livre/.test(r.message ?? '')
             ? '<button data-mlattrs="1" class="primary">Preencher atributos do ML agora</button>' : ''}
           ${r.manualKit ? `<button data-kit="${r.channel}">Abrir kit de publicação</button>` : ''}

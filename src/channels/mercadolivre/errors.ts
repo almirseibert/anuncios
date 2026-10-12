@@ -11,13 +11,52 @@ const CAMPO_DO_ATRIBUTO: Record<string, string> = {
   MODEL: 'Modelo',
 };
 
-interface MlCause { code?: string; message?: string }
+interface MlCause { code?: string; message?: string; department?: string; type?: string }
+
+function causas(detail: unknown): MlCause[] {
+  const c = (detail as { cause?: unknown } | undefined)?.cause;
+  return Array.isArray(c) ? (c as MlCause[]) : [];
+}
+
+const ATIVAR_ENVIOS = 'confira se o Mercado Envios esta ativo na sua conta do ML (Minha conta > Configuracoes > '
+  + 'Preferencias de venda > Formas de entrega)';
+
+/**
+ * Erros que nao sao de atributo, em portugues. Inclui avisos (type "warning"):
+ * o ML ja recusou anuncio com um "warning" como unica causa
+ * (shipping.lost_me1_by_user), entao aviso tambem pode bloquear.
+ */
+function outrasDicas(detail: unknown): string[] {
+  const dicas = new Set<string>();
+  for (const c of causas(detail)) {
+    const code = c.code ?? '';
+    const msg = c.message ?? '';
+    if (code === 'shipping.lost_me1_by_user' || /has not mode me1/i.test(msg)) {
+      dicas.add('O ML tentou usar um modo de envio (me1) que sua conta nao tem. O sistema agora manda o modo '
+        + `da sua conta (Mercado Envios, me2); se o erro continuar, ${ATIVAR_ENVIOS}.`);
+    } else if (/me2 adoption is mandatory|has not mode me2/i.test(msg)) {
+      dicas.add(`O ML exige Mercado Envios para esta conta ou categoria: ${ATIVAR_ENVIOS}.`);
+    } else if (code.startsWith('shipping.') || c.department === 'shipping' || code.startsWith('item.shipping')) {
+      dicas.add(`Problema no envio ("${msg || code}"): ${ATIVAR_ENVIOS}.`);
+    } else if (code.includes('listing_type')) {
+      dicas.add('O tipo de anuncio nao esta disponivel para sua conta nesta categoria.');
+    } else if (code.startsWith('item.pictures') || code.includes('picture')) {
+      dicas.add('O ML nao conseguiu usar as fotos: confira se PUBLIC_URL e o endereco publico (https) do sistema '
+        + 'e se as fotos abrem no navegador sem senha.');
+    } else if (code.startsWith('item.price')) {
+      dicas.add('O preco nao foi aceito pelo ML para esta categoria.');
+    } else if (code.includes('seller') || code.includes('user.')) {
+      dicas.add('O ML recusou por causa da conta do vendedor: abra o Mercado Livre, em Minha conta, e veja se ha '
+        + 'pendencia de cadastro (endereco, documento, telefone).');
+    }
+  }
+  return [...dicas];
+}
 
 /** Atributos que o ML disse estarem faltando, extraidos de "The attributes [A, B] are required...". */
 export function atributosFaltando(detail: unknown): string[] {
-  const causas = (detail as { cause?: MlCause[] } | undefined)?.cause ?? [];
   const ids = new Set<string>();
-  for (const c of causas) {
+  for (const c of causas(detail)) {
     // O ML usa as duas formas: "item.attribute.missing_conditional_required"
     // (GTIN) e "item.attributes.missing_required" (VOLTAGE).
     if (!/^item\.attributes?\.missing/.test(c.code ?? '')) continue;
@@ -27,10 +66,13 @@ export function atributosFaltando(detail: unknown): string[] {
   return [...ids];
 }
 
-/** Frase em portugues dizendo o que preencher, ou undefined se o erro nao for desse tipo. */
-export function dicaDoErro(detail: unknown): string | undefined {
-  const faltando = atributosFaltando(detail);
-  if (!faltando.length) return undefined;
+/**
+ * Frase em portugues dizendo o que fazer, ou undefined se o erro nao for de um
+ * tipo conhecido. `jaAvisados` sao atributos que a pre-checagem ja mandou
+ * preencher (pelo nome): nao repete.
+ */
+export function dicaDoErro(detail: unknown, jaAvisados: ReadonlySet<string> = new Set()): string | undefined {
+  const faltando = atributosFaltando(detail).filter((id) => !jaAvisados.has(id));
   const doCadastro = faltando.filter((id) => CAMPO_DO_ATRIBUTO[id]);
   const daCategoria = faltando.filter((id) => !CAMPO_DO_ATRIBUTO[id]);
   const frases: string[] = [];
@@ -41,7 +83,8 @@ export function dicaDoErro(detail: unknown): string | undefined {
     // atributos proprios da categoria: o painel pergunta ao ML e mostra o campo
     frases.push(`Abra "Atributos do Mercado Livre" no produto e preencha: ${daCategoria.join(', ')}.`);
   }
-  return frases.join(' ');
+  frases.push(...outrasDicas(detail));
+  return frases.length ? frases.join(' ') : undefined;
 }
 
 /**
@@ -49,8 +92,8 @@ export function dicaDoErro(detail: unknown): string | undefined {
  * ingles e longo, e o que o vendedor precisa ler primeiro e o que fazer. O
  * detalhe cru continua inteiro no bloco "Resposta da plataforma".
  */
-export function comDica(err: unknown): unknown {
+export function comDica(err: unknown, jaAvisados?: ReadonlySet<string>): unknown {
   if (!(err instanceof ChannelError)) return err;
-  const dica = dicaDoErro(err.detail);
-  return dica ? new ChannelError(`${dica} Resposta do ML: ${err.message}`, err.detail) : err;
+  const dica = dicaDoErro(err.detail, jaAvisados);
+  return dica ? new ChannelError(`${dica}\nResposta do ML: ${err.message}`, err.detail) : err;
 }

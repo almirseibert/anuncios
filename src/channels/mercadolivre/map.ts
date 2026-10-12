@@ -139,7 +139,7 @@ export function formAttributeIds(product: Product): Set<string> {
  * painel "Atributos do Mercado Livre". O do painel ganha quando os dois existem,
  * porque foi escolhido no vocabulario do proprio ML (com o id da opcao).
  */
-function allAttributes(product: Product): MlAttribute[] {
+export function allAttributes(product: Product): MlAttribute[] {
   const porId = new Map(attrs(product).map((a) => [a.id, a] as const));
   for (const [id, v] of Object.entries(product.channelAttrs?.mercadolivre?.attributes ?? {})) {
     if (v.value_id) porId.set(id, { id, value_id: v.value_id });
@@ -149,7 +149,7 @@ function allAttributes(product: Product): MlAttribute[] {
 }
 
 /** Tipo de exposicao: veiculos e imoveis usam listagens de classificados. */
-function listingTypeId(product: Product) {
+export function listingTypeId(product: Product) {
   return product.kind === 'geral' ? 'gold_special' : 'silver';
 }
 
@@ -163,6 +163,18 @@ function listingTypeId(product: Product) {
  * - classificado (veiculo, imovel): manda `title`, que e o titulo do anuncio
  *   escrito pelo vendedor. `family_name` nao se aplica.
  */
+/**
+ * Envio. Sem este bloco o ML escolhe o modo sozinho e pode cair num que a conta
+ * nao tem ("shipping.lost_me1_by_user"); quem escolhe e a pre-checagem
+ * (preflight.ts), a partir dos modos da conta.
+ */
+export interface MlShipping {
+  mode: 'me2' | 'not_specified' | 'custom';
+  local_pick_up: boolean;
+  free_shipping: boolean;
+  free_methods?: unknown[];
+}
+
 export interface MlItemPayload {
   title?: string;
   family_name?: string;
@@ -176,10 +188,17 @@ export interface MlItemPayload {
   pictures: Array<{ source: string }>;
   attributes: MlAttribute[];
   sale_terms?: MlAttribute[];
+  shipping?: MlShipping;
   location?: Record<string, unknown>;
 }
 
-export function buildItem(product: Product, categoryId?: string): MlItemPayload {
+export interface BuildOptions {
+  shipping?: MlShipping;
+  /** Tipo de anuncio escolhido entre os disponiveis para a conta; sem ele, o padrao do tipo de produto. */
+  listingTypeId?: string;
+}
+
+export function buildItem(product: Product, categoryId?: string, opts: BuildOptions = {}): MlItemPayload {
   const isClassified = product.kind !== 'geral';
   return {
     ...(isClassified
@@ -191,10 +210,11 @@ export function buildItem(product: Product, categoryId?: string): MlItemPayload 
     available_quantity: isClassified ? 1 : product.quantity,
     buying_mode: isClassified ? 'classified' : 'buy_it_now',
     condition: product.condition === 'novo' ? 'new' : 'used',
-    listing_type_id: listingTypeId(product),
+    listing_type_id: opts.listingTypeId ?? listingTypeId(product),
     pictures: product.images.map((i) => ({ source: i.url })),
     attributes: allAttributes(product),
     ...(isClassified ? {} : { sale_terms: saleTerms(product) }),
+    ...(!isClassified && opts.shipping ? { shipping: opts.shipping } : {}),
     ...(isClassified
       ? {
           location: {

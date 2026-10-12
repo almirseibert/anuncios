@@ -5,7 +5,8 @@ import { ChannelError, type Channel, type PublishContext, type PublishResult, ty
 import { buildDescription } from '../../services/templates.ts';
 import { comDica } from './errors.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
-import { buildItem, predictCategory } from './map.ts';
+import { buildItem, listingTypeId, predictCategory } from './map.ts';
+import { preflight, type Preflight } from './preflight.ts';
 import { photoIssues } from '../../services/images.ts';
 
 function validate(product: Product): ValidationIssue[] {
@@ -46,6 +47,40 @@ function validate(product: Product): ValidationIssue[] {
   return issues;
 }
 
+/** Lista numerada para a mensagem do painel (que mostra as quebras de linha). */
+function lista(titulo: string, itens: string[]) {
+  return itens.length ? `\n${titulo}\n${itens.map((t, i) => `(${i + 1}) ${t}`).join('\n')}` : '';
+}
+
+/**
+ * Prepara o anuncio: categoria, pre-checagem da conta (envio, tipo de anuncio,
+ * atributos) e o payload ja com as escolhas certas para esta conta.
+ */
+async function preparar(product: Product, token: string) {
+  // Se os atributos foram preenchidos numa categoria, publica nela: outra
+  // categoria exigiria outros atributos.
+  const categoryId = product.channelAttrs?.mercadolivre?.categoryId
+    ?? await predictCategory(product.title, token);
+  const pf = await preflight(product, categoryId, listingTypeId(product), token);
+  const payload = buildItem(product, categoryId, { shipping: pf.shipping, listingTypeId: pf.listingTypeId });
+  return { pf, payload };
+}
+
+/**
+ * Mensagem de recusa: tudo o que precisa ser resolvido de uma vez -- o que a
+ * pre-checagem achou e o que o ML respondeu, traduzido.
+ */
+function recusa(prefixo: string, erro: unknown, pf: Preflight) {
+  const err = comDica(erro, new Set(pf.atributosCobrados));
+  const msg = (err as Error).message;
+  return {
+    err,
+    message: pf.problemas.length
+      ? `${prefixo}.${lista('Resolva tudo isto antes de tentar de novo:', pf.problemas)}\n${msg}`
+      : `${prefixo}: ${msg}`,
+  };
+}
+
 /**
  * Em dry-run, quando a conta esta conectada, quem diz se o anuncio esta valido
  * e o proprio Mercado Livre: POST /items/validate aceita o payload inteiro e
@@ -65,30 +100,29 @@ async function dryRun(product: PublishContext['product']): Promise<PublishResult
     };
   }
 
-  // Se os atributos foram preenchidos numa categoria, publica nela: outra
-  // categoria exigiria outros atributos.
-  const categoryId = product.channelAttrs?.mercadolivre?.categoryId
-    ?? await predictCategory(product.title, token);
-  const payload = buildItem(product, categoryId);
+  const { pf, payload } = await preparar(product, token);
   try {
     const result = await request(`${ML_API}/items/validate`, {
       method: 'POST',
       json: payload,
       headers: { authorization: `Bearer ${token}` },
     });
+    // O ML tem a palavra final: validou, pode publicar. O que a pre-checagem
+    // achou vai como atencao.
     return {
       status: 'rascunho',
       payload,
       result,
-      message: 'o Mercado Livre validou este anuncio: pode publicar (desligue DRY_RUN).',
+      message: 'o Mercado Livre validou este anuncio: pode publicar (desligue DRY_RUN).'
+        + lista('Atencao:', [...pf.problemas, ...pf.avisos]),
     };
   } catch (erro) {
-    const err = comDica(erro);
+    const { err, message } = recusa('o Mercado Livre recusaria este anuncio', erro, pf);
     return {
       status: 'erro',
       payload,
       result: err instanceof ChannelError ? err.detail : undefined,
-      message: `o Mercado Livre recusaria este anuncio: ${(err as Error).message}`,
+      message: message + lista('Atencao:', pf.avisos),
     };
   }
 }
@@ -99,11 +133,7 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
 
   const account = await ensureToken();
   const token = account.accessToken!;
-  // Se os atributos foram preenchidos numa categoria, publica nela: outra
-  // categoria exigiria outros atributos.
-  const categoryId = product.channelAttrs?.mercadolivre?.categoryId
-    ?? await predictCategory(product.title, token);
-  const payload = buildItem(product, categoryId);
+  const { pf, payload } = await preparar(product, token);
 
   let created: { id: string; permalink: string; status: string };
   try {
@@ -112,8 +142,9 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
       json: payload,
       headers: { authorization: `Bearer ${token}` },
     });
-  } catch (err) {
-    throw comDica(err);
+  } catch (erro) {
+    const { err, message } = recusa('o Mercado Livre recusou o anuncio', erro, pf);
+    throw err instanceof ChannelError ? new ChannelError(message, err.detail) : err;
   }
 
   // A descricao deixou de ser aceita no corpo do item (o ML desativou o campo
@@ -137,7 +168,7 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
     permalink: created.permalink,
     payload,
     result: created,
-    message: `anuncio ${created.id} criado${aviso}`,
+    message: `anuncio ${created.id} criado${aviso}${lista('Atencao:', pf.avisos)}`,
   };
 }
 
