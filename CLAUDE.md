@@ -1,5 +1,7 @@
 # Como trabalhar neste repositório
 
+**Ao começar uma sessão, leia `docs/ANDAMENTO.md`**: diz onde o projeto parou, o que falta para publicar e o histórico dos erros do Mercado Livre já resolvidos. Ao terminar uma sessão com mudança relevante, atualize esse arquivo.
+
 ## Processo
 
 - **Commit e push direto na `main`. Não abrir pull request** — foi o combinado com o dono do projeto.
