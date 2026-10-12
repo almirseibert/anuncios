@@ -46,6 +46,8 @@ Em **Settings**, preencha o e-mail do Let's Encrypt. É com ele que os certifica
 Na aba **Source** do serviço:
 
 - **GitHub** → autorize o Easypanel na sua conta → repositório `almirseibert/anuncios` → branch `main`.
+  Se o trabalho mais recente ainda estiver numa branch de desenvolvimento, ou você junta ela na `main` antes
+  (pull request no GitHub) ou informa o nome dessa branch aqui — o Easypanel publica a branch que você apontar.
 - Se preferir não conectar o GitHub: escolha **Git** e informe a URL pública do repositório.
 
 Na aba **Build**, escolha **Dockerfile** (o arquivo já está na raiz do repositório). Não use Nixpacks: o `Dockerfile` daqui já fixa a imagem com as bibliotecas de imagem que o tratamento de fotos precisa.
