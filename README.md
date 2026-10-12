@@ -82,6 +82,12 @@ e coloque a URL gerada em `PUBLIC_URL`.
 
 A validação roda antes do envio e separa **bloqueios** (sem foto, sem preço, sem marca em veículo) de **avisos** (título que será cortado, `PUBLIC_URL` local). Bloqueio impede a publicação, a menos que você marque "ignorar bloqueios".
 
+## Publicando na internet
+
+As plataformas **baixam as fotos** pela `PUBLIC_URL` e o Mercado Livre exige HTTPS no retorno do login — então o sistema precisa de um endereço público antes de publicar de verdade. O passo a passo completo (VPS, Easypanel, domínio com HTTPS, volume das fotos, backup) está em [docs/DEPLOY-EASYPANEL.md](docs/DEPLOY-EASYPANEL.md).
+
+Exposto na internet, o painel passa a pedir usuário e senha: preencha `ADMIN_USER` e `ADMIN_PASS`. Ficam livres de senha, de propósito, as rotas que precisam disso para funcionar — `/uploads` (as plataformas baixam as fotos), `/feeds` (tem token próprio), `/produtos/:id` (página pública do anúncio), `/oauth/*` (callback) e `/m/*` (envio de fotos pelo celular). Sem `ADMIN_PASS` o sistema roda sem senha, como antes, para uso local.
+
 ## Credenciais
 
 Nenhuma é obrigatória para usar o sistema em dry-run. O passo a passo de cada plataforma está em [docs/CREDENCIAIS.md](docs/CREDENCIAIS.md).
@@ -130,7 +136,7 @@ Implemente a interface `Channel` (`src/channels/types.ts`) e registre em `src/ch
 
 ## Limitações conhecidas
 
-- O servidor **não tem autenticação**: ele serve em `127.0.0.1` e assume uso local. Se expuser na internet, coloque atrás de um proxy com autenticação — o feed XML tem token próprio, mas a API não.
+- A autenticação é um Basic Auth de usuário único (`ADMIN_USER`/`ADMIN_PASS`). Serve para um painel pessoal; não há múltiplos usuários, perfis nem registro de quem fez o quê.
 - O schema do feed da OLX está em `src/channels/olx/feed.ts` e segue a estrutura pública do autoupload. A OLX entrega o manual definitivo com a aprovação da integração e os nomes de campo variam por vertical: ajuste **só esse arquivo**.
 - A categoria do Mercado Livre é adivinhada pelo título (`domain_discovery`). Se cair na categoria errada, a API recusa atributos obrigatórios — o erro aparece íntegro no histórico.
 - O texto gerado pela IA é um rascunho: ele parte do que você escreveu, e o que foi deduzido fica listado em "Deduções da IA". Confira antes de publicar — anúncio com informação errada gera reclamação e, no Mercado Livre, prejudica a reputação.
