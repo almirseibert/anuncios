@@ -64,6 +64,54 @@ function attrs(product: Product): MlAttribute[] {
   return out;
 }
 
+/**
+ * Nome generico da familia do produto, obrigatorio no modelo de publicacao
+ * atual do Mercado Livre (sem ele a API responde
+ * "body does not contains ... [family_name]").
+ *
+ * Diferente do titulo: o titulo e o anuncio deste item ("Playstation 4 Slim
+ * 1TB com 2 controles, pouco uso"), a familia e o produto em si ("Sony
+ * Playstation 4 Slim"). E o que agrupa variacoes do mesmo produto.
+ */
+export function familyName(product: Product): string {
+  const a = product.attrs as Record<string, unknown>;
+  const str = (v: unknown) => String(v ?? '').trim();
+  let partes: string[];
+
+  if (product.kind === 'veiculo') {
+    partes = [str(a.brand), str(a.model), str(a.version)];
+  } else if (product.kind === 'imovel') {
+    partes = [PROPERTY[str(a.propertyType)] ?? str(a.propertyType), product.city || config.seller.city];
+  } else {
+    partes = [str(a.brand), str(a.model)];
+  }
+
+  const nome = partes.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  // Sem marca/modelo preenchidos, o titulo e a melhor descricao que temos.
+  return (nome || product.title).slice(0, 60).trim();
+}
+
+/**
+ * Garantia. O Mercado Livre exige WARRANTY_TYPE na maioria das categorias de
+ * produto -- anuncio sem isso e recusado por sale_terms. "Sem garantia" e o
+ * valor correto para usado de pessoa fisica, e e o que vale quando voce nao
+ * preencheu nada; dizer outra coisa seria prometer o que voce nao ofereceu.
+ *
+ * Classificados (veiculo, imovel) nao usam sale_terms.
+ */
+export function saleTerms(product: Product): MlAttribute[] {
+  if (product.kind !== 'geral') return [];
+  const garantia = String((product.attrs as Record<string, unknown>).warranty ?? '').trim();
+  if (!garantia) return [{ id: 'WARRANTY_TYPE', value_name: 'Sem garantia' }];
+
+  const termos: MlAttribute[] = [{ id: 'WARRANTY_TYPE', value_name: 'Garantia do vendedor' }];
+  // O ML so aceita prazo no formato "N dias/meses/anos"; texto livre fica de fora
+  // (vai na descricao, que o comprador le de qualquer jeito).
+  const prazo = /^(\d+)\s*(dias?|m[eê]s|meses|anos?)$/i.exec(garantia);
+  if (prazo) termos.push({ id: 'WARRANTY_TIME', value_name: `${prazo[1]} ${prazo[2]!.toLowerCase()}` });
+  return termos;
+}
+
 /** Tipo de exposicao: veiculos e imoveis usam listagens de classificados. */
 function listingTypeId(product: Product) {
   return product.kind === 'geral' ? 'gold_special' : 'silver';
@@ -71,6 +119,8 @@ function listingTypeId(product: Product) {
 
 export interface MlItemPayload {
   title: string;
+  /** Nome do produto (familia). Obrigatorio na API de items desde 2025. */
+  family_name: string;
   category_id?: string;
   price: number;
   currency_id: 'BRL';
@@ -81,6 +131,7 @@ export interface MlItemPayload {
   description: { plain_text: string };
   pictures: Array<{ source: string }>;
   attributes: MlAttribute[];
+  sale_terms?: MlAttribute[];
   location?: Record<string, unknown>;
 }
 
@@ -88,6 +139,7 @@ export function buildItem(product: Product, categoryId?: string): MlItemPayload 
   const isClassified = product.kind !== 'geral';
   return {
     title: product.title.slice(0, 60),
+    family_name: familyName(product),
     category_id: categoryId,
     price: product.priceCents / 100,
     currency_id: 'BRL',
@@ -98,6 +150,7 @@ export function buildItem(product: Product, categoryId?: string): MlItemPayload 
     description: { plain_text: buildDescription(product) },
     pictures: product.images.map((i) => ({ source: i.url })),
     attributes: attrs(product),
+    ...(isClassified ? {} : { sale_terms: saleTerms(product) }),
     ...(isClassified
       ? {
           location: {

@@ -56,6 +56,8 @@ Depois disso:
 
 - **A autorização usa PKCE**, hoje obrigatório no Mercado Livre. Isso é interno ao sistema, você não configura nada — só precisa saber de um efeito prático: o processo tem de ser concluído na mesma execução do servidor. Se o Easypanel reiniciar entre clicar em "Conectar" e voltar da tela do ML (um Deploy no meio, por exemplo), a conexão falha com "Autorização expirada". É só clicar em Conectar de novo.
 - O acesso vale 6 horas e é renovado automaticamente. Se a conexão cair dizendo "sem refresh_token", o escopo `offline_access` não foi marcado na aplicação — corrija lá e reconecte.
+- O sistema envia `family_name` (o nome do produto, tipo "Sony Playstation 4 Slim") além do título do anúncio: o ML passou a exigir esse campo. Ele sai de marca + modelo; se você deixar os dois vazios, cai no título. Preencher marca e modelo no formulário melhora o resultado.
+- Sem garantia informada, o anúncio vai como **"Sem garantia"** — exigência do ML para a maioria das categorias de produto, e o que de fato vale num usado de pessoa física. Se você escrever a garantia no formato `3 meses`, ela vai como prazo; em texto livre, vai só como "garantia do vendedor" e o detalhe fica na descrição.
 - A categoria do anúncio é adivinhada pelo título. Se cair na categoria errada, o ML recusa os atributos obrigatórios e o erro aparece inteiro no histórico; ajuste o título (marca + modelo primeiro) e tente de novo.
 - **Foto real é exigência, não detalhe.** Anúncio de usado com foto só de catálogo é derrubado e prejudica a reputação. Por isso o sistema não deixa foto de catálogo ser a capa, e bloqueia a publicação de produto que não tenha nenhuma foto sua.
 
