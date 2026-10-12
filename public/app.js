@@ -695,6 +695,9 @@ async function boot() {
   if (state.config.publicUrlIsLocal) {
     avisos.push('PUBLIC_URL aponta para localhost: as plataformas não conseguem baixar as fotos. Use um túnel (ngrok/cloudflared) e ajuste o .env.');
   }
+  if (!state.config.authEnabled) {
+    avisos.push('Painel SEM senha: qualquer um que abrir este endereço cria e publica anúncios na sua conta. Defina ADMIN_USER e ADMIN_PASS.');
+  }
   if (avisos.length) {
     $('#banner').hidden = false;
     $('#banner').textContent = avisos.join(' ');
@@ -707,6 +710,8 @@ async function boot() {
     $('#ai-gerar').disabled = true;
     $('#ai-aviso').textContent = 'defina GEMINI_API_KEY no .env para habilitar';
   }
+
+  document.title = `Anúncios Multiplataforma v${state.config.version}`;
 
   await loadChannels();
   await loadProducts();

@@ -46,8 +46,11 @@ Em **Settings**, preencha o e-mail do Let's Encrypt. É com ele que os certifica
 Na aba **Source** do serviço:
 
 - **GitHub** → autorize o Easypanel na sua conta → repositório `almirseibert/anuncios` → branch `main`.
-  Se o trabalho mais recente ainda estiver numa branch de desenvolvimento, ou você junta ela na `main` antes
-  (pull request no GitHub) ou informa o nome dessa branch aqui — o Easypanel publica a branch que você apontar.
+
+> **O Easypanel publica exatamente a branch que você apontar aqui, e só depois de um Deploy.** São dois enganos
+> comuns e silenciosos: apontar para uma branch que não tem o trabalho recente (o app sobe normalmente, com a
+> versão antiga, sem nenhum erro que denuncie isso), ou mergear na `main` e esquecer de clicar em **Deploy**.
+> Ligar **Auto Deploy** em Source resolve o segundo.
 - Se preferir não conectar o GitHub: escolha **Git** e informe a URL pública do repositório.
 
 Na aba **Build**, escolha **Dockerfile** (o arquivo já está na raiz do repositório). Não use Nixpacks: o `Dockerfile` daqui já fixa a imagem com as bibliotecas de imagem que o tratamento de fotos precisa.
@@ -116,10 +119,20 @@ DRY_RUN ligado: as publicacoes montam o payload mas nao chamam as plataformas.
 
 Faça os quatro na ordem — o terceiro é o que costuma pegar.
 
-1. Abra `https://SEU-DOMINIO`. O navegador tem de **pedir usuário e senha** e, depois, mostrar o painel. Se abrir sem pedir, `ADMIN_PASS` não chegou ao contêiner.
-2. Crie um produto qualquer e envie uma foto.
-3. Copie o endereço da foto (botão direito → copiar endereço da imagem, algo como `https://SEU-DOMINIO/uploads/xxxx.jpg`) e abra numa **janela anônima**. A foto tem de aparecer **sem pedir senha**. É exatamente assim que o Mercado Livre, a OLX e a Meta baixam suas imagens — se aqui pedir senha ou der erro, nenhuma plataforma vai conseguir publicar suas fotos.
-4. Marque os canais e clique em **Publicar**. Em dry-run, cada canal mostra o JSON que *seria* enviado. Nada sai para fora.
+1. **Qual versão está no ar.** Abra `https://SEU-DOMINIO/m/teste`. Tem de aparecer *"Este link expirou. Gere um
+   novo QR Code no painel."* Se vier erro de rota não encontrada, o Easypanel está publicando código antigo:
+   confira a branch no passo 4 e clique em Deploy.
+2. Abra `https://SEU-DOMINIO`. O navegador tem de **pedir usuário e senha** e, depois, mostrar o painel.
+   Se abrir sem pedir, `ADMIN_PASS` não chegou ao contêiner — e, da versão 0.2.0 em diante, o app nem sobe
+   nessa situação: o log mostra o que falta. O painel também avisa em faixa amarela quando está sem senha.
+3. Crie um produto qualquer e envie uma foto.
+4. Copie o endereço da foto (botão direito → copiar endereço da imagem, algo como
+   `https://SEU-DOMINIO/uploads/xxxx.jpg`) e abra numa **janela anônima**. A foto tem de aparecer **sem pedir
+   senha** — e isso continua assim depois do login funcionando. Não é falha: o Mercado Livre, a OLX e a Meta
+   baixam suas imagens por essa URL, como robôs, sem credencial nenhuma. Se essa rota pedisse senha, nenhuma
+   plataforma conseguiria publicar suas fotos. O que a senha protege é o painel e a API — criar, editar,
+   publicar, ver o histórico. A foto de um anúncio é, por definição, pública.
+5. Marque os canais e clique em **Publicar**. Em dry-run, cada canal mostra o JSON que *seria* enviado. Nada sai para fora.
 
 ## 10. Dia a dia
 

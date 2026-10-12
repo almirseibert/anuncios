@@ -1,4 +1,4 @@
-import { config } from '../../config.ts';
+import { config, isLocalUrl } from '../../config.ts';
 import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import type { Channel, PublishContext, PublishResult, ValidationIssue } from '../types.ts';
@@ -18,7 +18,7 @@ function validate(product: Product): ValidationIssue[] {
   if (product.priceCents <= 0) {
     issues.push({ field: 'priceCents', severity: 'error', message: 'preco precisa ser maior que zero' });
   }
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl)) {
+  if (isLocalUrl(config.publicUrl)) {
     issues.push({
       field: 'images', severity: 'warn',
       message: 'PUBLIC_URL aponta para localhost: o Mercado Livre nao conseguira baixar as fotos. Use um tunel (ngrok/cloudflared).',

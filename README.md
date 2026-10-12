@@ -100,7 +100,9 @@ A validação roda antes do envio e separa **bloqueios** (sem foto, sem preço, 
 
 As plataformas **baixam as fotos** pela `PUBLIC_URL` e o Mercado Livre exige HTTPS no retorno do login — então o sistema precisa de um endereço público antes de publicar de verdade. O passo a passo completo (VPS, Easypanel, domínio com HTTPS, volume das fotos, backup) está em [docs/DEPLOY-EASYPANEL.md](docs/DEPLOY-EASYPANEL.md).
 
-Exposto na internet, o painel passa a pedir usuário e senha: preencha `ADMIN_USER` e `ADMIN_PASS`. Ficam livres de senha, de propósito, as rotas que precisam disso para funcionar — `/uploads` (as plataformas baixam as fotos), `/feeds` (tem token próprio), `/produtos/:id` (página pública do anúncio), `/oauth/*` (callback) e `/m/*` (envio de fotos pelo celular). Sem `ADMIN_PASS` o sistema roda sem senha, como antes, para uso local.
+Exposto na internet, o painel passa a pedir usuário e senha: preencha `ADMIN_USER` e `ADMIN_PASS`. Se `PUBLIC_URL` não for local e `ADMIN_PASS` estiver vazio, **o servidor se recusa a iniciar** e diz o que falta (`ALLOW_NO_AUTH=true` libera, para quem quer mesmo o painel aberto). Em `localhost` nada muda: sem senha, como antes.
+
+Ficam livres de senha, de propósito, as rotas que precisam disso para funcionar — `/uploads` (é por ela que as plataformas baixam as fotos; se pedisse senha, nenhuma imagem chegaria ao anúncio), `/feeds` (tem token próprio), `/produtos/:id` (página pública do anúncio), `/oauth/*` (callback) e `/m/*` (envio de fotos pelo celular, autenticado pelo token do link). Ou seja: a foto do anúncio abre em janela anônima mesmo com o login ligado — isso é o esperado.
 
 ## Credenciais
 

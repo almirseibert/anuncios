@@ -1,6 +1,6 @@
 {
   "name": "anuncios-multiplataforma",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "Sistema de anuncios multiplataforma: cadastro unico de produto, publicacao em Mercado Livre, OLX, Facebook e kits manuais.",

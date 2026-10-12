@@ -2,7 +2,7 @@ import { unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
+import { config, isLocalUrl } from '../config.ts';
 import { productInput } from '../domain/product.ts';
 import { channelStatus, getChannel } from '../channels/registry.ts';
 import { ChannelError } from '../channels/types.ts';
@@ -18,6 +18,7 @@ import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from
 import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
 import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
 import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
+import { authEnabled } from '../lib/auth.ts';
 import { toString as qrToString } from 'qrcode';
 
 const referenceBody = z.object({
@@ -68,9 +69,11 @@ export async function registerApiRoutes(app: FastifyInstance) {
   app.get('/health', async () => ({ ok: true, dryRun: config.dryRun, publicUrl: config.publicUrl }));
 
   app.get('/config', async () => ({
+    version: config.version,
     dryRun: config.dryRun,
+    authEnabled: authEnabled(),
     publicUrl: config.publicUrl,
-    publicUrlIsLocal: /^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl),
+    publicUrlIsLocal: isLocalUrl(config.publicUrl),
     seller: config.seller,
     aiConfigured: aiConfigured(),
     aiModel: config.gemini.model,
@@ -264,7 +267,7 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const { token, expiresAt } = issueUploadToken(id);
     const url = uploadLink(token);
     const svg = await qrToString(url, { type: 'svg', margin: 1, width: 240 });
-    const local = /^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl);
+    const local = isLocalUrl(config.publicUrl);
     return {
       url,
       expiresAt,

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
+import { config, isLocalUrl } from '../config.ts';
 
 /**
  * Rotas que NAO pedem senha, de proposito:
@@ -20,13 +20,30 @@ function sameString(a: string, b: string) {
   return timingSafeEqual(ba, bb);
 }
 
+/** true quando o painel esta protegido por senha. */
+export function authEnabled() {
+  return Boolean(config.admin.pass);
+}
+
 /**
- * Basic auth no painel inteiro. Sem ADMIN_PASS o hook nao e registrado --
- * em desenvolvimento local o comportamento continua o de antes.
+ * Basic auth no painel inteiro.
+ *
+ * Sem ADMIN_PASS o hook nao e registrado, para o uso local continuar simples --
+ * mas so quando o app de fato e local. Com PUBLIC_URL publica e sem senha o
+ * servidor **recusa iniciar**: um painel exposto sem senha deixa qualquer um
+ * criar, editar e publicar anuncio na sua conta, e isso passa despercebido por
+ * meses. Quem realmente quiser esse modo usa ALLOW_NO_AUTH=true.
  */
 export function registerBasicAuth(app: FastifyInstance) {
-  const { user, pass } = config.admin;
+  const { user, pass, allowNoAuth } = config.admin;
   if (!pass) {
+    if (!isLocalUrl(config.publicUrl) && !allowNoAuth) {
+      throw new Error(
+        `ADMIN_PASS vazio com PUBLIC_URL publica (${config.publicUrl}): o painel ficaria aberto na internet. `
+        + 'Defina ADMIN_USER e ADMIN_PASS nas variaveis de ambiente '
+        + '(no Easypanel: servico > Environment) ou, se isso e mesmo o que voce quer, ALLOW_NO_AUTH=true.',
+      );
+    }
     app.log.warn('ADMIN_PASS vazio: o painel esta SEM senha. Nao exponha este app na internet assim.');
     return;
   }
