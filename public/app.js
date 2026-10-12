@@ -10,9 +10,12 @@ const money = (cents) => BRL.format((cents ?? 0) / 100);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function api(path, opts = {}) {
+  // content-type JSON so com corpo JSON: o Fastify recusa "application/json"
+  // sem corpo (DELETE, pausar...), e FormData define o proprio cabecalho.
+  const json = typeof opts.body === 'string';
   const res = await fetch(`/api${path}`, {
     ...opts,
-    headers: opts.body instanceof FormData ? undefined : { 'content-type': 'application/json', ...opts.headers },
+    headers: json ? { 'content-type': 'application/json', ...opts.headers } : opts.headers,
   });
   const data = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error ?? `erro ${res.status}`);
