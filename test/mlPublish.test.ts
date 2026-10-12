@@ -227,7 +227,7 @@ test('tudo o que falta aparece de uma vez: conta, atributo da categoria e o erro
 
   assert.equal(r.status, 'erro');
   assert.match(r.message!, /\(1\) O ML nao deixa esta conta anunciar \(endereco pendente\)/);
-  assert.match(r.message!, /\(2\) Abra "Atributos do Mercado Livre" no produto e preencha: Voltagem\./);
+  assert.match(r.message!, /\(2\) Em "Editar" no produto, preencha em "Atributos do Mercado Livre": Voltagem\./);
   assert.match(r.message!, /preco nao foi aceito/);
   // VOLTAGE ja foi cobrado pela pre-checagem: nao repete com o id cru
   assert.equal(/preencha: VOLTAGE/.test(r.message!), false, r.message);

@@ -159,7 +159,7 @@ $('#ai-gerar').addEventListener('click', async (ev) => {
   }
 });
 
-function openForm(product) {
+function openForm(product, { rolarParaMl = false } = {}) {
   const form = $('#form-produto');
   form.reset();
   state.editing = product?.id ?? null;
@@ -195,7 +195,15 @@ function openForm(product) {
 
   syncKindFields();
   $('#tcount').textContent = `${form.title.value.length}/120`;
+  if (product) {
+    abrirAtributosMl(product.id);
+  } else {
+    delete $('#ml-painel').dataset.categoryId;
+    $('#ml-painel').innerHTML = '<p class="muted">Salve o produto primeiro: os atributos dependem da categoria, '
+      + 'que o Mercado Livre deduz do título.</p>';
+  }
   $('#dlg-produto').showModal();
+  if (rolarParaMl) $('#ml-attrs-box').scrollIntoView({ block: 'start' });
 }
 
 function collectAttrs(form, kind) {
@@ -250,6 +258,10 @@ $('#form-produto').addEventListener('submit', async (ev) => {
     const saved = state.editing
       ? await api(`/products/${state.editing}`, { method: 'PUT', body: JSON.stringify(body) })
       : await api('/products', { method: 'POST', body: JSON.stringify(body) });
+    const atributosMl = state.editing ? coletarAtributosMl() : null;
+    if (atributosMl) {
+      await api(`/products/${saved.product.id}/ml-attributes`, { method: 'PUT', body: JSON.stringify(atributosMl) });
+    }
     $('#dlg-produto').close();
     await loadProducts();
     openDetail(saved.product.id);
@@ -322,25 +334,19 @@ async function openDetail(id) {
         return `<div class="channel-row">
           <label>
             <input type="checkbox" class="ch" value="${c.id}" ${errors.length ? '' : 'checked'}>
-            <span>${esc(c.label)} <small class="muted">(${c.mode})</small></span>
+            <span>${esc(c.label)}${c.label.includes(`(${c.mode})`) ? '' : ` <small class="muted">(${c.mode})</small>`}</span>
           </label>
           ${listing ? `<span class="pill ${listing.status}">${esc(listing.status)}</span>` : ''}
           ${listing?.permalink ? `<a href="${esc(listing.permalink)}" target="_blank" rel="noopener">abrir</a>` : ''}
           ${c.mode === 'manual' ? `<button data-kit="${c.id}">Ver kit</button>` : ''}
-          ${c.id === 'mercadolivre' ? `<button data-mlattrs="1">Atributos do Mercado Livre${
-            Object.keys(product.channelAttrs?.mercadolivre?.attributes ?? {}).length
-              ? ` (${Object.keys(product.channelAttrs.mercadolivre.attributes).length})` : ''}</button>` : ''}
           ${listing?.externalId && c.id === 'mercadolivre'
             ? `<button data-pause="${c.id}">Pausar</button><button data-close-ad="${c.id}">Encerrar</button>` : ''}
           ${c.issues.length ? `<ul class="issues">${c.issues.map((i) =>
             `<li class="${i.severity}">${esc(i.message)}</li>`).join('')}</ul>` : ''}
         </div>`;
       }).join('')}
-      <div id="ml-painel"></div>
       <p class="row">
         <button id="publicar" class="primary">Publicar nos canais marcados</button>
-        <label class="row"><input type="checkbox" id="dry" ${state.config?.dryRun ? 'checked' : ''}> simular (dry-run)</label>
-        <label class="row"><input type="checkbox" id="force"> ignorar bloqueios</label>
       </p>
       <div id="resultado"></div>
     </section>`;
@@ -586,7 +592,11 @@ $('#det-corpo').addEventListener('click', async (ev) => {
   if (t.dataset.enhance) abrirMelhoria(productId, t.dataset.enhance);
 
   if (t.dataset.kit) showKit(productId, t.dataset.kit);
-  if (t.dataset.mlattrs) abrirAtributosMl(productId);
+  if (t.dataset.mlattrs) {
+    // os atributos ficam na edicao do produto
+    $('#dlg-detalhe').close();
+    openForm(state.products.find((p) => p.id === productId), { rolarParaMl: true });
+  }
 
   if (t.dataset.pause || t.dataset.closeAd) {
     const channel = t.dataset.pause ?? t.dataset.closeAd;
@@ -614,7 +624,7 @@ $('#det-corpo').addEventListener('click', async (ev) => {
     try {
       const { results } = await api(`/products/${productId}/publish`, {
         method: 'POST',
-        body: JSON.stringify({ channels, dryRun: $('#dry').checked, force: $('#force').checked }),
+        body: JSON.stringify({ channels, dryRun: false, force: false }),
       });
       $('#resultado').innerHTML = results.map((r) => `
         <div class="card">
@@ -648,6 +658,8 @@ $('#det-corpo').addEventListener('click', async (ev) => {
  */
 async function abrirAtributosMl(productId, categoryId) {
   const painel = $('#ml-painel');
+  delete painel.dataset.categoryId;
+  delete painel.dataset.categoryName;
   painel.innerHTML = '<p class="muted">Perguntando ao Mercado Livre o que esta categoria exige...</p>';
   let data;
   try {
@@ -683,54 +695,46 @@ async function abrirAtributosMl(productId, categoryId) {
       ${controle}${f.hint ? `<small class="muted">${esc(f.hint)}</small>` : ''}</label>`;
   };
 
+  painel.dataset.categoryId = category.id;
+  painel.dataset.categoryName = category.name;
   painel.innerHTML = `
-    <div class="painel">
-      <p><strong>Atributos do Mercado Livre</strong> — categoria <strong>${esc(category.name)}</strong>
-        <span class="muted">(${esc(category.id)} · ${esc(category.path)})</span></p>
-      ${fields.length
-        ? `<div class="fields">${fields.map(campo).join('')}</div>`
-        : '<p class="muted">Esta categoria não exige nada além do que o cadastro já informa.</p>'}
-      <p class="row">
-        ${fields.length ? '<button id="ml-salvar" class="primary">Salvar atributos</button>' : ''}
-        <span class="muted">Categoria errada? Informe outra:</span>
-        <input id="ml-cat" value="${esc(category.id)}" style="width:9rem">
-        <button id="ml-trocar">Trocar</button>
-        <button id="ml-fechar">Fechar</button>
-        <span id="ml-status" class="muted"></span>
-      </p>
-    </div>`;
+    <p>Categoria <strong>${esc(category.name)}</strong>
+      <span class="muted">(${esc(category.id)} · ${esc(category.path)})</span></p>
+    ${fields.length
+      ? `<div class="fields">${fields.map(campo).join('')}</div>
+         <small class="muted">Salvos junto com o produto, no botão Salvar.</small>`
+      : '<p class="muted">Esta categoria não exige nada além do que o cadastro já informa.</p>'}
+    <p class="row">
+      <span class="muted">Categoria errada? Informe outra:</span>
+      <input id="ml-cat" value="${esc(category.id)}" style="width:9rem">
+      <button type="button" id="ml-trocar">Trocar</button>
+    </p>`;
 
-  $('#ml-fechar').onclick = () => { painel.innerHTML = ''; };
   $('#ml-trocar').onclick = () => abrirAtributosMl(productId, $('#ml-cat').value.trim());
-  const salvar = $('#ml-salvar');
-  if (!salvar) return;
-  salvar.onclick = async () => {
-    const attributes = {};
-    for (const el of $$('[data-attr]', painel)) {
-      const id = el.dataset.attr;
-      const valor = el.value.trim();
-      if (!valor) continue;
-      if (el.dataset.type === 'list' || el.dataset.type === 'boolean') {
-        attributes[id] = { value_id: valor, value_name: el.selectedOptions[0].textContent };
-      } else if (el.dataset.type === 'number_unit') {
-        attributes[id] = { value_name: `${valor} ${$(`[data-unit-for="${id}"]`, painel).value}` };
-      } else {
-        attributes[id] = { value_name: valor };
-      }
+}
+
+/**
+ * Valores do painel de atributos do ML, para salvar junto com o produto. null
+ * quando o painel nao carregou (ML desconectado, produto novo): ai nada e
+ * gravado, e o que ja estava salvo continua.
+ */
+function coletarAtributosMl() {
+  const painel = $('#ml-painel');
+  if (!painel.dataset.categoryId) return null;
+  const attributes = {};
+  for (const el of $$('[data-attr]', painel)) {
+    const id = el.dataset.attr;
+    const valor = el.value.trim();
+    if (!valor) continue;
+    if (el.dataset.type === 'list' || el.dataset.type === 'boolean') {
+      attributes[id] = { value_id: valor, value_name: el.selectedOptions[0].textContent };
+    } else if (el.dataset.type === 'number_unit') {
+      attributes[id] = { value_name: `${valor} ${$(`[data-unit-for="${id}"]`, painel).value}` };
+    } else {
+      attributes[id] = { value_name: valor };
     }
-    salvar.disabled = true;
-    try {
-      await api(`/products/${productId}/ml-attributes`, {
-        method: 'PUT',
-        body: JSON.stringify({ categoryId: category.id, categoryName: category.name, attributes }),
-      });
-      $('#ml-status').textContent = `salvo (${Object.keys(attributes).length} atributo(s)). Rode o dry-run para o ML conferir.`;
-      await loadProducts();
-    } catch (err) {
-      $('#ml-status').textContent = '';
-      alert(err.message);
-    } finally { salvar.disabled = false; }
-  };
+  }
+  return { categoryId: painel.dataset.categoryId, categoryName: painel.dataset.categoryName, attributes };
 }
 
 async function showKit(productId, channel) {
@@ -806,7 +810,6 @@ async function loadEvents() {
 async function boot() {
   state.config = await api('/config');
   const avisos = [];
-  if (state.config.dryRun) avisos.push('DRY_RUN ligado: as publicações são simuladas (nada é enviado às plataformas).');
   if (state.config.publicUrlIsLocal) {
     avisos.push('PUBLIC_URL aponta para localhost: as plataformas não conseguem baixar as fotos. Use um túnel (ngrok/cloudflared) e ajuste o .env.');
   }

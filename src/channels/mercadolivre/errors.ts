@@ -81,7 +81,7 @@ export function dicaDoErro(detail: unknown, jaAvisados: ReadonlySet<string> = ne
   }
   if (daCategoria.length) {
     // atributos proprios da categoria: o painel pergunta ao ML e mostra o campo
-    frases.push(`Abra "Atributos do Mercado Livre" no produto e preencha: ${daCategoria.join(', ')}.`);
+    frases.push(`Em "Editar" no produto, preencha em "Atributos do Mercado Livre": ${daCategoria.join(', ')}.`);
   }
   frases.push(...outrasDicas(detail));
   return frases.length ? frases.join(' ') : undefined;

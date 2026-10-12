@@ -1,12 +1,14 @@
 import type { Kind } from '../domain/product.ts';
-import { facebookCatalog } from './facebook/catalog.ts';
 import { facebookGroups } from './facebook/groups.ts';
 import { mercadoLivre } from './mercadolivre/index.ts';
-import { olx } from './olx/index.ts';
-import { whatsapp } from './whatsapp.ts';
 import type { Channel } from './types.ts';
 
-export const channels: Channel[] = [mercadoLivre, olx, facebookCatalog, facebookGroups, whatsapp];
+/**
+ * Canais ativos. OLX, catalogo da Meta (facebook/catalog.ts) e WhatsApp
+ * (whatsapp.ts) sairam por enquanto, a pedido do dono: o codigo continua no
+ * repositorio e volta acrescentando o adapter nesta lista.
+ */
+export const channels: Channel[] = [mercadoLivre, facebookGroups];
 
 export function getChannel(id: string): Channel | undefined {
   return channels.find((c) => c.id === id);

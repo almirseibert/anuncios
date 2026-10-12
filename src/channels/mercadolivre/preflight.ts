@@ -184,7 +184,7 @@ export async function preflight(
       problemas.push(`Preencha no cadastro do produto: ${cadastro.map((f) => f.name).join(', ')}.`);
     }
     if (painel.length) {
-      problemas.push('Abra "Atributos do Mercado Livre" no produto e preencha: '
+      problemas.push('Em "Editar" no produto, preencha em "Atributos do Mercado Livre": '
         + `${painel.map((f) => f.name).join(', ')}.`);
     }
   }

@@ -10,17 +10,16 @@
 
 1. **Deploy no Easypanel.** O código mais recente está na `main`, mas só entra no ar depois de clicar em **Deploy** no serviço — ou com **Auto Deploy** ligado em Source.
 2. **Confira que a versão nova subiu:** abra `https://SEU-DOMINIO/m/teste`. Tem de aparecer *"Este link expirou"*. Se vier erro de rota, o deploy não pegou.
-3. **No produto do PS4**, vá em Canais → Mercado Livre → **"Atributos do Mercado Livre"**:
+3. **No produto do PS4**, clique em **Editar** e desça até **"Atributos do Mercado Livre"** (o painel agora fica no cadastro, não na tela de publicar):
    - **Voltagem:** *Bivolt* (o PS4 Slim aceita de 100 a 240V; confirme na etiqueta embaixo do console).
-   - **Capacidade**, se aparecer: *1 TB* (ou o que for o seu).
-   - Salve.
-4. Marque só o Mercado Livre, deixe **"simular (dry-run)" marcado** e clique em Publicar.
-   - Com a conta conectada, o dry-run não é simulação nossa: o payload vai para o **endpoint de validação do próprio ML**, que diz se o anúncio seria aceito.
-5. Leia o resultado. Agora a mensagem traz **tudo o que falta de uma vez**, numerado (conta, envio, atributos) e, embaixo, um bloco **"Atenção"** com o que foi escolhido (ex.: frete grátis obrigatório acima de R$ 79):
-   - **"o Mercado Livre validou este anúncio"** → desmarque a simulação e publique de verdade. Depois, **confira no site do ML que título ele montou** (veja a seção 4).
+   - **Capacidade**, se aparecer: *500 GB* (ou o que for o seu).
+   - **Salvar** grava o produto e os atributos juntos.
+4. Em **Publicar**, marque o Mercado Livre e clique em **Publicar nos canais marcados**. Não existe mais "simular": a publicação é de verdade. Se o ML recusar, **nenhum anúncio é criado** e a mensagem lista, numerado, tudo o que falta.
+5. Leia o resultado:
+   - **"anúncio MLB... criado"** → abra o link e **confira que título o ML montou** (veja a seção 4).
+   - **Atributo faltando** → o botão **"Preencher atributos do ML agora"** abre o Editar já na seção certa.
    - **"Sua conta não tem Mercado Envios"** ou erro de envio → no site do ML, *Minha conta > Configurações > Preferências de venda > Formas de entrega*, ative o Mercado Envios e repita.
-   - **Atributo faltando** → a mensagem começa dizendo o que preencher, e há o botão **"Preencher atributos do ML agora"**. Preencha e repita o passo 4.
-   - **Outro erro** → copie o bloco **"Resposta da plataforma"** (tem botão Copiar) e leve para a próxima sessão. Ele traz o motivo exato.
+   - **Outro erro** → copie o bloco **"Resposta da plataforma"** (tem botão Copiar) e leve para a próxima sessão.
 
 Para a sessão do Claude que continuar: o `CLAUDE.md` na raiz tem as regras de trabalho (commit direto na `main`, sem pull request) e as decisões que não podem ser desfeitas. Este arquivo tem o contexto.
 
@@ -42,11 +41,11 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | "Melhorar foto" com IA (Gemini) | **não verificado** com chave real |
 | Mercado Livre — conexão (OAuth com PKCE) | **funcionando em produção** |
 | Mercado Livre — publicação | **quase**: último erro foi o modo de envio (`lost_me1_by_user`), já resolvido no código |
-| OLX | não configurado (exige parceria, normalmente negada a pessoa física) |
-| Catálogo Meta (Facebook/Instagram) | não configurado |
-| Grupos do Facebook / WhatsApp | funcionando como kit manual (não existe API) |
+| OLX, Catálogo Meta, WhatsApp | **desativados por enquanto** (fora de `src/channels/registry.ts`; o código continua no repositório) |
+| Grupos do Facebook | funcionando como kit manual (não existe API) — botão **"Ver kit"** na tela de publicar |
+| Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **71 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **79 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -67,7 +66,7 @@ O ML mudou bastante a API de publicação, e cada tentativa revelou uma regra no
 
 O que mudou de método no caminho, e vale manter:
 
-- **Dry-run valida no próprio ML** (`POST /items/validate`) quando a conta está conectada. É o jeito de descobrir o que falta sem criar anúncio.
+- **Dry-run valida no próprio ML** (`POST /items/validate`) quando a conta está conectada. O painel não oferece mais a opção (pedido do dono, out/2026): publica de verdade, e um anúncio recusado não é criado. O dry-run continua na API (`dryRun: true` no `/publish`) e em `DRY_RUN`, para quem chamar sem o painel.
 - **Erro de atributo vira instrução em português**, na frente da mensagem, dizendo qual campo preencher.
 - **Pré-checagem antes de cada envio** (`preflight.ts`), para não descobrir uma regra por rodada. Pergunta ao ML, de uma vez: a conta pode anunciar (`/users/me` → `status.list/sell`), que modos de envio ela tem (`/users/:id/shipping_preferences`), que tipos de anúncio pode usar na categoria (`/users/:id/available_listing_types`) e que atributos obrigatórios faltam (`/categories/:id/attributes`). Consulta que falha não bloqueia: a palavra final é do `/items/validate`.
 - **`warning` do ML também pode bloquear** — o tradutor de erros (`errors.ts`) trata envio, tipo de anúncio, fotos, preço e conta, não só atributo.
@@ -103,6 +102,11 @@ Ainda não configurados:
 
 - [ ] **Meta (catálogo Facebook/Instagram)** — passo a passo em `docs/CREDENCIAIS.md`. Exige Business Manager.
 - [ ] **OLX** — exige parceria; se for negada, publicar à mão.
+
+Pesquisado, não feito (out/2026):
+
+- [ ] **Enjoei** — não tem API pública para vendedor. A única integração documentada é via VTEX (lojista, por contrato). Para pessoa física, publicar à mão — dá para virar um kit manual, como o dos grupos do Facebook.
+- [ ] **Importar os anúncios que já estão no ML** — é possível pela API com a conta já conectada: `GET /users/:id/items/search` (lista os IDs; `search_type=scan` passa de 1000), `GET /items?ids=...` (até 20 por vez: título, preço, fotos, atributos, estado) e `GET /items/:id/description`. As fotos têm de passar por `processUpload`. Falta decidir com o dono: melhorar e **editar o mesmo anúncio** (`PUT /items/:id` + descrição; mantém vendas e reputação, mas o título não muda depois de ter venda) ou **republicar como anúncio novo**.
 
 Ideias levantadas, não feitas:
 

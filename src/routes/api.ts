@@ -235,10 +235,10 @@ export async function registerApiRoutes(app: FastifyInstance) {
         message: 'o catalogo do Mercado Livre cobre produtos de linha. Veiculo e imovel sao unicos: use suas proprias fotos.',
       });
     }
-    const candidates = await findCatalogImages(product.title);
+    const candidates = await findCatalogImages(product);
     return {
       candidates,
-      message: candidates.length ? undefined : 'nenhum produto parecido no catalogo. Tente um titulo com marca e modelo.',
+      message: candidates.length ? undefined : 'nenhum produto parecido no catalogo. Preencha marca e modelo (ou o codigo de barras) no cadastro.',
     };
   });
 
