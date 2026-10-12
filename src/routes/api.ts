@@ -16,6 +16,8 @@ import { allListings, changeListingStatus, listingsFor, publishToChannels } from
 import { aiConfigured, generateDraft } from '../services/ai.ts';
 import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
 import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
+import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
+import { toString as qrToString } from 'qrcode';
 
 const referenceBody = z.object({
   images: z.array(z.object({
@@ -248,6 +250,28 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const processed = await processUpload(buf, { productId: id });
     addImage(id, { ...processed, origin: 'url', sourceUrl: parsed.data.url });
     return reply.status(201).send({ product: getProduct(id) });
+  });
+
+  /**
+   * QR Code para enviar fotos pelo celular. Devolve o SVG pronto e o link,
+   * que vale 2 horas. O link e isento de senha: quem autoriza e o token.
+   */
+  app.get('/products/:id/upload-qr', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+
+    const { token, expiresAt } = issueUploadToken(id);
+    const url = uploadLink(token);
+    const svg = await qrToString(url, { type: 'svg', margin: 1, width: 240 });
+    const local = /^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl);
+    return {
+      url,
+      expiresAt,
+      svg,
+      warning: local
+        ? 'PUBLIC_URL aponta para localhost: o celular nao vai abrir este link. Use o endereco publico do servidor.'
+        : undefined,
+    };
   });
 
   app.put('/products/:id/images/order', async (req) => {

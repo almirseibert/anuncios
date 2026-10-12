@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS images (
 );
 CREATE INDEX IF NOT EXISTS idx_images_product ON images(product_id, position);
 
+-- Link temporario para enviar fotos pelo celular (QR Code do painel).
+-- E o unico jeito de o celular postar foto sem passar pelo basic auth.
+CREATE TABLE IF NOT EXISTS upload_tokens (
+  token      TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_upload_tokens_product ON upload_tokens(product_id);
+
 CREATE TABLE IF NOT EXISTS channel_accounts (
   channel        TEXT PRIMARY KEY,
   label          TEXT NOT NULL DEFAULT '',

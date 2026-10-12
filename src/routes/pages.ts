@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { formatBRL } from '../domain/product.ts';
-import { getProduct } from '../services/products.ts';
-import { locationLine, specLines } from '../services/templates.ts';
+import { addImage, getProduct } from '../services/products.ts';
+import { illustrativeNote, locationLine, specLines } from '../services/templates.ts';
+import { ACCEPTED_MIME, processUpload } from '../services/images.ts';
+import { productIdForToken } from '../services/uploadTokens.ts';
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -48,6 +50,98 @@ ${p.images[0] ? `<meta property="og:image" content="${esc(p.images[0].url)}">` :
   <p>${esc(p.description)}</p>
   ${specs ? `<h2>Detalhes</h2><ul>${specs}</ul>` : ''}
   ${p.acceptsTrade ? '<p class="muted">Aceito troca.</p>' : ''}
+  ${illustrativeNote(p) ? `<p class="muted">${esc(illustrativeNote(p))}</p>` : ''}
 </main>`);
+  });
+
+  /**
+   * Envio de fotos pelo celular. Pagina minima, sem senha: quem autoriza e o
+   * token do link, que vale 2 horas e serve a um produto so. O painel mostra
+   * isto como QR Code.
+   */
+  app.get('/m/:token', async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const productId = productIdForToken(token);
+    const product = productId ? getProduct(productId) : undefined;
+    if (!product) {
+      return reply.status(404).type('text/html').send(
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+        + '<p style="font:16px system-ui;padding:2rem">Este link expirou. Gere um novo QR Code no painel.</p>',
+      );
+    }
+
+    return reply.type('text/html').send(`<!doctype html>
+<html lang="pt-BR"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fotos - ${esc(product.title)}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font:17px/1.5 system-ui,sans-serif; margin:0; padding:1.25rem; }
+  h1 { font-size:1.15rem; margin:0 0 1rem; }
+  label { display:block; border:2px dashed currentColor; border-radius:.75rem; padding:1.5rem 1rem;
+          text-align:center; opacity:.85; }
+  input[type=file] { display:block; margin:.75rem auto 0; }
+  button { width:100%; padding:.9rem; font-size:1.05rem; border-radius:.6rem; margin-top:1rem;
+           border:0; background:#0a63c9; color:#fff; }
+  button[disabled] { opacity:.5; }
+  #log { margin-top:1rem; }
+  .thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-top:1rem; }
+  .thumbs img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:.4rem; }
+</style>
+<h1>${esc(product.title)}</h1>
+<form id="f">
+  <label>Tirar foto ou escolher da galeria
+    <input type="file" id="files" accept="image/*" capture="environment" multiple required>
+  </label>
+  <button type="submit">Enviar fotos</button>
+</form>
+<div id="log"></div>
+<div class="thumbs" id="thumbs">${product.images.map((i) => `<img src="${esc(i.url)}" alt="">`).join('')}</div>
+<script>
+const form = document.getElementById('f');
+const log = document.getElementById('log');
+form.addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const input = document.getElementById('files');
+  if (!input.files.length) return;
+  const fd = new FormData();
+  for (const f of input.files) fd.append('images', f);
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  log.textContent = 'Enviando ' + input.files.length + ' foto(s)...';
+  try {
+    const res = await fetch(location.pathname + '/images', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'falha no envio');
+    log.textContent = 'Pronto. ' + data.product.images.length + ' foto(s) no anuncio.';
+    document.getElementById('thumbs').innerHTML =
+      data.product.images.map((i) => '<img src="' + i.url + '" alt="">').join('');
+    input.value = '';
+  } catch (err) {
+    log.textContent = 'Erro: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>`);
+  });
+
+  app.post('/m/:token/images', async (req, reply) => {
+    const { token } = req.params as { token: string };
+    const productId = productIdForToken(token);
+    if (!productId) return reply.status(404).send({ error: 'link expirado' });
+
+    const saved: string[] = [];
+    for await (const part of req.parts()) {
+      if (part.type !== 'file') continue;
+      if (!ACCEPTED_MIME.has(part.mimetype)) {
+        return reply.status(400).send({ error: `tipo nao aceito: ${part.mimetype}` });
+      }
+      const processed = await processUpload(await part.toBuffer(), { productId });
+      addImage(productId, { ...processed, origin: 'upload' });
+      saved.push(processed.filename);
+    }
+    if (saved.length === 0) return reply.status(400).send({ error: 'nenhuma imagem recebida' });
+    return reply.status(201).send({ product: getProduct(productId) });
   });
 }
