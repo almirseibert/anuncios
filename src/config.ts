@@ -28,6 +28,17 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? '',
     model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    imageModel: process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image',
+  },
+  /** Basic auth do painel. Sem senha o hook nao e registrado (uso local). */
+  admin: {
+    user: process.env.ADMIN_USER ?? 'admin',
+    pass: process.env.ADMIN_PASS ?? '',
+  },
+  image: {
+    /** Lado maior do derivado servido as plataformas. */
+    maxSide: Number(process.env.IMAGE_MAX_SIDE ?? 1600),
+    quality: Number(process.env.IMAGE_QUALITY ?? 85),
   },
   channels: {
     mercadolivre: {

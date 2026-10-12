@@ -4,6 +4,7 @@ import fastifyStatic from '@fastify/static';
 import { resolve } from 'node:path';
 import { config } from './config.ts';
 import { ChannelError } from './channels/types.ts';
+import { registerBasicAuth } from './lib/auth.ts';
 import { registerApiRoutes } from './routes/api.ts';
 import { registerOauthRoutes } from './routes/oauth.ts';
 import { registerFeedRoutes } from './routes/feeds.ts';
@@ -13,6 +14,9 @@ const app = Fastify({
   logger: { transport: { target: 'pino-pretty', options: { translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } } },
   bodyLimit: 2 * 1024 * 1024,
 });
+
+// Precisa vir antes das rotas: protege o painel e a API inteira.
+registerBasicAuth(app);
 
 await app.register(multipart, { limits: { fileSize: 15 * 1024 * 1024, files: 20 } });
 

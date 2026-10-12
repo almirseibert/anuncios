@@ -11,7 +11,8 @@
     "dev": "node --experimental-sqlite --env-file-if-exists=.env --import tsx --watch src/server.ts",
     "start": "node --experimental-sqlite --env-file-if-exists=.env --import tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "seed": "node --experimental-sqlite --env-file-if-exists=.env --import tsx scripts/seed.ts"
+    "seed": "node --experimental-sqlite --env-file-if-exists=.env --import tsx scripts/seed.ts",
+    "test": "node --experimental-sqlite --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^9.0.3",
