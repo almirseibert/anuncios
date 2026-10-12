@@ -5,12 +5,40 @@ export type Kind = (typeof KINDS)[number];
 
 const str = (max: number) => z.string().trim().max(max);
 
+/**
+ * Digito verificador GS1 (mod 10), o mesmo para EAN-8, UPC-12, EAN-13 e GTIN-14.
+ * Um digito trocado na digitacao vira outro produto no catalogo do Mercado
+ * Livre -- melhor recusar no formulario do que publicar no produto errado.
+ */
+export function gtinValido(gtin: string) {
+  if (!/^(\d{8}|\d{12}|\d{13}|\d{14})$/.test(gtin)) return false;
+  const digitos = [...gtin].map(Number);
+  const verificador = digitos.pop()!;
+  const soma = digitos.reverse().reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (soma % 10)) % 10 === verificador;
+}
+
+/** Motivos aceitos pelo ML quando o produto nao tem codigo de barras (EMPTY_GTIN_REASON). */
+export const GTIN_MISSING_REASONS = ['', 'nao_registrado', 'kit', 'artesanal', 'outro'] as const;
+
 /** Atributos extras de item avulso (movel, eletronico, ferramenta...). */
 export const geralAttrs = z.object({
   brand: str(60).default(''),
   model: str(60).default(''),
   wear: z.enum(['novo', 'seminovo', 'bom', 'usado_marcas', 'para_reparo']).default('bom'),
   warranty: str(80).default(''),
+  /**
+   * Codigo de barras (EAN/GTIN). Vem SEMPRE do vendedor, nunca da IA: um
+   * codigo inventado casa o anuncio com outro produto no catalogo do ML.
+   * Espacos e tracos sao tolerados na digitacao e removidos aqui.
+   */
+  gtin: z.preprocess(
+    (v) => String(v ?? '').replace(/[\s.-]/g, ''),
+    z.string().refine((v) => v === '' || gtinValido(v), {
+      message: 'codigo de barras invalido: confira os digitos (EAN tem 8 ou 13, UPC tem 12)',
+    }),
+  ).default(''),
+  gtinMissingReason: z.enum(GTIN_MISSING_REASONS).default(''),
 });
 
 export const veiculoAttrs = z.object({

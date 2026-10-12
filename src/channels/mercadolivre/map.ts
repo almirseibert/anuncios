@@ -16,7 +16,19 @@ const PROPERTY: Record<string, string> = {
 };
 const OPERATION: Record<string, string> = { venda: 'Venda', aluguel: 'Aluguel', temporada: 'Aluguel por temporada' };
 
-export interface MlAttribute { id: string; value_name: string }
+export interface MlAttribute { id: string; value_name?: string; value_id?: string }
+
+/**
+ * Valores de EMPTY_GTIN_REASON na documentacao do ML (identificadores de
+ * produtos). Usados so quando o vendedor declarou o motivo -- o sistema nunca
+ * escolhe um por ele, porque e uma declaracao sobre o produto.
+ */
+export const EMPTY_GTIN_REASON_IDS: Record<string, string> = {
+  artesanal: '17055158',
+  kit: '17055159',
+  nao_registrado: '17055160',
+  outro: '17055161',
+};
 
 /** Pergunta ao ML qual categoria melhor descreve o titulo (domain discovery). */
 export async function predictCategory(title: string, token: string): Promise<string | undefined> {
@@ -59,6 +71,12 @@ function attrs(product: Product): MlAttribute[] {
   } else {
     push('BRAND', a.brand);
     push('MODEL', a.model);
+    // GTIN e "condicional obrigatorio" em boa parte das categorias de produto:
+    // o ML quer o codigo de barras e, so na falta dele, aceita um motivo
+    // declarado -- e ainda assim nao para todas as marcas.
+    const motivo = EMPTY_GTIN_REASON_IDS[String(a.gtinMissingReason ?? '')];
+    if (a.gtin) push('GTIN', a.gtin);
+    else if (motivo) out.push({ id: 'EMPTY_GTIN_REASON', value_id: motivo });
   }
   return out;
 }

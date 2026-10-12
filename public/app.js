@@ -224,7 +224,10 @@ function collectAttrs(form, kind) {
       furnished: checked('furnished'), features: list('features'),
     };
   }
-  return { brand: val('brand'), model: val('model'), wear: val('wear'), warranty: val('warranty') };
+  return {
+    brand: val('brand'), model: val('model'), wear: val('wear'), warranty: val('warranty'),
+    gtin: val('gtin'), gtinMissingReason: val('gtinMissingReason'),
+  };
 }
 
 $('#form-produto').addEventListener('submit', async (ev) => {

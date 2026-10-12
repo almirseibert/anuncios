@@ -46,6 +46,15 @@ const publishBody = z.object({
 });
 
 /** Garante que o caminho resolvido continua dentro de uploadsDir. */
+/** "dados invalidos" sozinho esconde o que corrigir: junta as mensagens de cada campo. */
+function invalidMessage(error: z.ZodError) {
+  const partes = error.issues.map((i) => {
+    const campo = i.path.filter((p) => p !== 'attrs').join('.');
+    return campo ? `${campo}: ${i.message}` : i.message;
+  });
+  return `dados invalidos — ${partes.join('; ')}`;
+}
+
 /** Baixa a primeira URL que responder imagem; se nenhuma responder, propaga o ultimo erro. */
 async function firstAvailable(urls: string[]) {
   let last: unknown;
@@ -130,14 +139,14 @@ export async function registerApiRoutes(app: FastifyInstance) {
 
   app.post('/products', async (req, reply) => {
     const parsed = productInput.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+    if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
     return reply.status(201).send({ product: createProduct(parsed.data) });
   });
 
   app.put('/products/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const parsed = productInput.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+    if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
     const product = updateProduct(id, parsed.data);
     if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
     return { product };
@@ -226,7 +235,7 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
     const parsed = referenceBody.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+    if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
 
     for (const item of parsed.data.images) {
       // Tenta a variante de maior resolucao e cai para a URL que a API deu.
@@ -346,7 +355,7 @@ export async function registerApiRoutes(app: FastifyInstance) {
   /** Escreve um anuncio novo a partir do nome do produto e do contexto livre. */
   app.post('/ai/draft', async (req, reply) => {
     const parsed = draftBody.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+    if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
     const draft = await generateDraft(parsed.data);
     logEvent('info', 'rascunho gerado pelo Gemini', { data: { kind: parsed.data.kind, title: draft.title } });
     return { draft };

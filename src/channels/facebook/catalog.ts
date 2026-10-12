@@ -27,6 +27,10 @@ export function buildCatalogItem(product: Product) {
     image_url: product.images[0]?.url ?? '',
     additional_image_urls: product.images.slice(1, 10).map((i) => i.url),
     brand: String((product.attrs as Record<string, unknown>).brand ?? config.seller.name ?? '').slice(0, 70),
+    // O catalogo da Meta usa o GTIN para casar o item com o produto certo.
+    ...((product.attrs as Record<string, unknown>).gtin
+      ? { gtin: String((product.attrs as Record<string, unknown>).gtin) }
+      : {}),
     category: CATEGORY[product.kind],
     custom_label_0: product.kind,
   };

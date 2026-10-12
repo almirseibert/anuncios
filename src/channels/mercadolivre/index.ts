@@ -3,6 +3,7 @@ import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import { ChannelError, type Channel, type PublishContext, type PublishResult, type ValidationIssue } from '../types.ts';
 import { buildDescription } from '../../services/templates.ts';
+import { comDica } from './errors.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, predictCategory } from './map.ts';
 import { photoIssues } from '../../services/images.ts';
@@ -24,6 +25,17 @@ function validate(product: Product): ValidationIssue[] {
       field: 'images', severity: 'warn',
       message: 'PUBLIC_URL aponta para localhost: o Mercado Livre nao conseguira baixar as fotos. Use um tunel (ngrok/cloudflared).',
     });
+  }
+  if (product.kind === 'geral') {
+    const a = product.attrs as Record<string, unknown>;
+    if (!a.gtin && !a.gtinMissingReason) {
+      issues.push({
+        field: 'attrs.gtin',
+        severity: 'warn',
+        message: 'sem codigo de barras (EAN): boa parte das categorias do ML exige. Ele fica na caixa '
+          + 'ou na etiqueta do produto. Se nao houver, informe o motivo no cadastro.',
+      });
+    }
   }
   if (product.kind === 'veiculo') {
     const a = product.attrs as Record<string, unknown>;
@@ -67,7 +79,8 @@ async function dryRun(product: PublishContext['product']): Promise<PublishResult
       result,
       message: 'o Mercado Livre validou este anuncio: pode publicar (desligue DRY_RUN).',
     };
-  } catch (err) {
+  } catch (erro) {
+    const err = comDica(erro);
     return {
       status: 'erro',
       payload,
@@ -86,11 +99,16 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
   const categoryId = await predictCategory(product.title, token);
   const payload = buildItem(product, categoryId);
 
-  const created = await request<{ id: string; permalink: string; status: string }>(`${ML_API}/items`, {
-    method: 'POST',
-    json: payload,
-    headers: { authorization: `Bearer ${token}` },
-  });
+  let created: { id: string; permalink: string; status: string };
+  try {
+    created = await request(`${ML_API}/items`, {
+      method: 'POST',
+      json: payload,
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    throw comDica(err);
+  }
 
   // A descricao deixou de ser aceita no corpo do item (o ML desativou o campo
   // em 2021): ela vai numa chamada propria, depois que o anuncio existe.

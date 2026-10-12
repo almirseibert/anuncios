@@ -29,7 +29,7 @@ function novoProduto() {
     city: 'Porto Alegre',
     uf: 'RS',
     neighborhood: 'Centro',
-    attrs: { brand: 'Sony', model: 'PS4 Slim', wear: 'bom', warranty: '' },
+    attrs: { brand: 'Sony', model: 'PS4 Slim', wear: 'bom', warranty: '', gtin: '', gtinMissingReason: '' },
   });
 }
 

@@ -116,6 +116,20 @@
             </select>
           </label>
           <label>Garantia <input name="g_warranty" placeholder="Ex: 3 meses de loja"></label>
+          <label>Código de barras (EAN)
+            <input name="g_gtin" inputmode="numeric" autocomplete="off" placeholder="Ex: 7891234567895">
+            <small class="muted">Na caixa ou na etiqueta do produto. O Mercado Livre exige em boa parte das categorias.</small>
+          </label>
+          <label>Sem código de barras? Motivo
+            <select name="g_gtinMissingReason">
+              <option value="">— tenho o código —</option>
+              <option value="nao_registrado">Produto sem código registrado</option>
+              <option value="kit">É um kit / conjunto de itens</option>
+              <option value="artesanal">Artesanal / feito por mim</option>
+              <option value="outro">Outro motivo</option>
+            </select>
+            <small class="muted">Só vale sem código. O ML não aceita para todas as marcas.</small>
+          </label>
         </div>
       </fieldset>
 
