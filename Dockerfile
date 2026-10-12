@@ -1,9 +1,11 @@
-FROM node:22-alpine
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 ENV NODE_ENV=development
 
 COPY package*.json ./
+# O sharp (tratamento das fotos) instala binario pre-compilado nesta imagem;
+# em alpine/musl ele teria de compilar libvips do zero.
 RUN npm ci
 
 COPY tsconfig.json ./

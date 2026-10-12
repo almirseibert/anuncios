@@ -1,8 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
-import { pipeline } from 'node:stream/promises';
-import { extname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { config } from '../config.ts';
@@ -17,8 +14,7 @@ import {
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
-
-const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+import { ACCEPTED_MIME, ImageError, originalsDir, processUpload } from '../services/images.ts';
 
 const draftBody = z.object({
   kind: z.enum(['geral', 'veiculo', 'imovel']),
@@ -129,7 +125,12 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const product = getProduct(id);
     if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
     deleteProduct(id);
-    await Promise.allSettled(product.images.map((i) => unlink(uploadPath(i.filename))));
+    await Promise.allSettled([
+      ...product.images.map((i) => unlink(uploadPath(i.filename))),
+      ...product.images
+        .filter((i) => i.originalFilename)
+        .map((i) => unlink(join(originalsDir, i.originalFilename))),
+    ]);
     return { ok: true };
   });
 
@@ -142,19 +143,16 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const saved: string[] = [];
     for await (const part of req.parts()) {
       if (part.type !== 'file') continue;
-      if (!ALLOWED_IMAGE_MIME.has(part.mimetype)) {
-        return reply.status(400).send({ error: `tipo nao aceito: ${part.mimetype} (use jpeg, png ou webp)` });
+      if (!ACCEPTED_MIME.has(part.mimetype)) {
+        return reply.status(400).send({
+          error: `tipo nao aceito: ${part.mimetype} (use jpeg, png, webp ou heic)`,
+        });
       }
-      const ext = extname(part.filename || '').toLowerCase() || `.${part.mimetype.split('/')[1]}`;
-      const filename = `${id}-${randomUUID()}${ext}`;
-      const target = join(config.uploadsDir, filename);
-      await pipeline(part.file, createWriteStream(target));
-      if (part.file.truncated) {
-        await unlink(target).catch(() => {});
-        return reply.status(413).send({ error: 'imagem maior que 15 MB' });
-      }
-      addImage(id, filename, part.mimetype, part.file.bytesRead);
-      saved.push(filename);
+      const buf = await part.toBuffer();
+      if (part.file.truncated) return reply.status(413).send({ error: 'imagem maior que 15 MB' });
+      const processed = await processUpload(buf, { productId: id });
+      addImage(id, { ...processed, origin: 'upload' });
+      saved.push(processed.filename);
     }
     if (saved.length === 0) return reply.status(400).send({ error: 'nenhuma imagem recebida' });
     return reply.status(201).send({ product: getProduct(id) });
@@ -166,6 +164,9 @@ export async function registerApiRoutes(app: FastifyInstance) {
     if (!image) return reply.status(404).send({ error: 'imagem nao encontrada' });
     removeImage(imageId);
     await unlink(uploadPath(image.filename)).catch(() => {});
+    if (image.original_filename) {
+      await unlink(join(originalsDir, image.original_filename)).catch(() => {});
+    }
     return { ok: true };
   });
 

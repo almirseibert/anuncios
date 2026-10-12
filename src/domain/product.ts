@@ -73,12 +73,37 @@ export const productInput = z.discriminatedUnion('kind', [
 
 export type ProductInput = z.infer<typeof productInput>;
 
+/**
+ * De onde a foto veio:
+ * - `upload`  foto sua, tirada do item real. A unica que pode ser capa.
+ * - `catalogo` foto oficial do catalogo do Mercado Livre: ilustra o modelo.
+ * - `url`     imagem baixada de um link que voce colou.
+ * - `ia`      versao tratada por IA de uma foto sua.
+ */
+export type ImageOrigin = 'upload' | 'catalogo' | 'url' | 'ia';
+
+/** Fotos que NAO sao do item real: entram como ilustrativas e nunca como capa. */
+export const ILLUSTRATIVE_ORIGINS: readonly ImageOrigin[] = ['catalogo', 'url'];
+
+export function isOwnPhoto(image: Pick<ProductImage, 'origin'>) {
+  return !ILLUSTRATIVE_ORIGINS.includes(image.origin);
+}
+
 export interface ProductImage {
   id: string;
   filename: string;
   mime: string;
   position: number;
   url: string;
+  width: number;
+  height: number;
+  origin: ImageOrigin;
+  /** Para `catalogo`/`url`, a origem da imagem; para `ia`, a foto de onde ela saiu. */
+  sourceUrl: string;
+  /** Rotulo legivel da fonte, ex. o nome do produto no catalogo do ML. */
+  sourceLabel: string;
+  /** Arquivo intacto em uploads/originals. */
+  originalFilename: string;
 }
 
 /** Produto como o resto do sistema consome: campos normalizados + imagens resolvidas. */

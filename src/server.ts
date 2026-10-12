@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { config } from './config.ts';
 import { ChannelError } from './channels/types.ts';
 import { registerBasicAuth } from './lib/auth.ts';
+import { ImageError } from './services/images.ts';
 import { registerApiRoutes } from './routes/api.ts';
 import { registerOauthRoutes } from './routes/oauth.ts';
 import { registerFeedRoutes } from './routes/feeds.ts';
@@ -39,6 +40,9 @@ app.setErrorHandler((err: FastifyError, _req, reply) => {
   const cause: unknown = err;
   if (cause instanceof ChannelError) {
     return reply.status(400).send({ error: cause.message, detail: cause.detail });
+  }
+  if (cause instanceof ImageError) {
+    return reply.status(400).send({ error: cause.message });
   }
   if (err.validation) {
     return reply.status(400).send({ error: err.message });
