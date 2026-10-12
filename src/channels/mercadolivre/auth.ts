@@ -4,7 +4,8 @@ import { request } from '../../lib/http.ts';
 import { getAccount, isExpired, saveAccount } from '../../services/accounts.ts';
 import { ChannelError, type ChannelAccount } from '../types.ts';
 
-const API = 'https://api.mercadolibre.com';
+// ML_API_BASE existe para testes (apontar para um ML falso); em producao fica vazio.
+const API = process.env.ML_API_BASE ?? 'https://api.mercadolibre.com';
 export const CHANNEL_ID = 'mercadolivre';
 
 interface TokenResponse {

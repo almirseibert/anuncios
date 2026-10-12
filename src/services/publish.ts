@@ -73,6 +73,8 @@ export interface PublishOutcome {
   permalink?: string | null;
   externalId?: string | null;
   payload?: unknown;
+  /** Resposta crua da plataforma -- inclusive o corpo do erro, que e o que diz o que falta. */
+  result?: unknown;
   dryRun: boolean;
 }
 
@@ -125,17 +127,21 @@ export async function publishToChannel(
       permalink: row.permalink,
       externalId: row.external_id,
       payload: result.payload,
+      result: result.result,
       dryRun,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    upsertListing(productId, channelId, { status: 'erro', error: message });
-    logEvent('error', message, {
-      productId,
-      channel: channelId,
-      data: err instanceof ChannelError ? err.detail : undefined,
+    // O corpo do erro da plataforma e o que diz qual campo falta ou sobra:
+    // ele vai para o listing, para o historico e para a tela.
+    const detail = err instanceof ChannelError ? err.detail : undefined;
+    upsertListing(productId, channelId, {
+      status: 'erro',
+      error: message,
+      result_json: detail === undefined ? null : JSON.stringify(detail),
     });
-    return { channel: channelId, status: 'erro', message, issues, dryRun };
+    logEvent('error', message, { productId, channel: channelId, data: detail });
+    return { channel: channelId, status: 'erro', message, issues, result: detail, dryRun };
   }
 }
 

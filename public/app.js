@@ -590,6 +590,14 @@ $('#det-corpo').addEventListener('click', async (ev) => {
     } catch (err) { alert(err.message); }
   }
 
+  if (t.classList.contains('copiar-json')) {
+    await navigator.clipboard.writeText(t.closest('details').querySelector('pre').textContent);
+    const antes = t.textContent;
+    t.textContent = 'copiado!';
+    setTimeout(() => { t.textContent = antes; }, 2000);
+    return;
+  }
+
   if (t.id === 'publicar') {
     const channels = $$('.ch').filter((c) => c.checked).map((c) => c.value);
     if (!channels.length) return alert('Marque pelo menos um canal.');
@@ -609,7 +617,12 @@ $('#det-corpo').addEventListener('click', async (ev) => {
           </div>
           ${r.message ? `<div class="muted">${esc(r.message)}</div>` : ''}
           ${r.manualKit ? `<button data-kit="${r.channel}">Abrir kit de publicação</button>` : ''}
-          ${r.payload ? `<details><summary>Payload enviado</summary><pre>${esc(JSON.stringify(r.payload, null, 2))}</pre></details>` : ''}
+          ${r.result ? `<details${r.status === 'erro' ? ' open' : ''}><summary>Resposta da plataforma</summary>
+            <pre>${esc(JSON.stringify(r.result, null, 2))}</pre>
+            <button class="copiar-json" data-json="result">Copiar</button></details>` : ''}
+          ${r.payload ? `<details><summary>Payload enviado</summary>
+            <pre>${esc(JSON.stringify(r.payload, null, 2))}</pre>
+            <button class="copiar-json" data-json="payload">Copiar</button></details>` : ''}
         </div>`).join('');
       await loadProducts();
     } catch (err) {
