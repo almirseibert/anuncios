@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Anúncios Multiplataforma</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header>
+  <h1>Anúncios Multiplataforma</h1>
+  <nav>
+    <button class="tab" data-view="produtos" aria-current="true">Produtos</button>
+    <button class="tab" data-view="canais">Canais</button>
+    <button class="tab" data-view="eventos">Histórico</button>
+  </nav>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main>
+  <!-- PRODUTOS -->
+  <section id="view-produtos">
+    <div class="toolbar">
+      <button id="novo" class="primary">+ Novo produto</button>
+      <input id="busca" type="search" placeholder="Buscar por título, marca, cidade...">
+    </div>
+    <div id="lista" class="grid"></div>
+    <p id="vazio" class="muted" hidden>Nenhum produto cadastrado. Clique em "Novo produto" para começar.</p>
+  </section>
+
+  <!-- CANAIS -->
+  <section id="view-canais" hidden>
+    <div id="canais" class="grid"></div>
+  </section>
+
+  <!-- EVENTOS -->
+  <section id="view-eventos" hidden>
+    <table class="events">
+      <thead><tr><th>Quando</th><th>Nível</th><th>Canal</th><th>Mensagem</th></tr></thead>
+      <tbody id="eventos"></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- EDITOR DE PRODUTO -->
+<dialog id="dlg-produto">
+  <form id="form-produto">
+    <header class="dlg-head"><h2 id="form-titulo">Novo produto</h2>
+      <button type="button" class="ghost" data-close>Fechar</button></header>
+
+    <section class="ai-box" id="ai-box">
+      <div class="row">
+        <strong>Gerar com IA</strong>
+        <span class="muted" id="ai-model"></span>
+        <span class="spacer"></span>
+        <span class="muted" id="ai-aviso"></span>
+      </div>
+      <textarea id="ai-input" rows="3"
+        placeholder="Ex: Playstation 4 slim 1TB com 2 controles, vendo porque comprei o PS5. Pouco uso, sempre em casa."></textarea>
+      <div class="row">
+        <button type="button" id="ai-gerar" class="primary">Escrever anúncio</button>
+        <span id="ai-status" class="muted"></span>
+      </div>
+      <div id="ai-saida"></div>
+    </section>
+
+    <div class="fields">
+      <label class="full">Tipo de anúncio
+        <select name="kind" id="kind">
+          <option value="geral">Produto / item usado</option>
+          <option value="veiculo">Veículo</option>
+          <option value="imovel">Imóvel</option>
+        </select>
+      </label>
+
+      <label class="full">Título
+        <input name="title" required maxlength="120" placeholder="Ex: Sofá retrátil 3 lugares suede cinza">
+        <small class="muted">O Mercado Livre corta em 60 caracteres. <span id="tcount"></span></small>
+      </label>
+
+      <label>Preço (R$)
+        <input name="price" type="number" step="0.01" min="0" required>
+      </label>
+      <label>Condição
+        <select name="condition"><option value="usado">Usado</option><option value="novo">Novo</option></select>
+      </label>
+      <label>Quantidade
+        <input name="quantity" type="number" min="1" value="1">
+      </label>
+      <label class="check">
+        <input name="acceptsTrade" type="checkbox"> Aceito troca
+      </label>
+
+      <label class="full">Descrição
+        <textarea name="description" rows="5" placeholder="Estado de conservação, motivo da venda, o que está incluso..."></textarea>
+      </label>
+
+      <label>CEP <input name="cep" maxlength="9" placeholder="00000-000"></label>
+      <label>Cidade <input name="city" maxlength="80"></label>
+      <label>UF <input name="uf" maxlength="2" placeholder="SP"></label>
+      <label>Bairro <input name="neighborhood" maxlength="80"></label>
+
+      <fieldset class="full" id="attrs-geral">
+        <legend>Detalhes do item</legend>
+        <div class="fields">
+          <label>Marca <input name="g_brand"></label>
+          <label>Modelo <input name="g_model"></label>
+          <label>Estado
+            <select name="g_wear">
+              <option value="novo">Novo, sem uso</option>
+              <option value="seminovo">Semi-novo</option>
+              <option value="bom" selected>Em bom estado</option>
+              <option value="usado_marcas">Usado, com marcas</option>
+              <option value="para_reparo">Para reparo / peças</option>
+            </select>
+          </label>
+          <label>Garantia <input name="g_warranty" placeholder="Ex: 3 meses de loja"></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="full" id="attrs-veiculo" hidden>
+        <legend>Dados do veículo</legend>
+        <div class="fields">
+          <label>Tipo
+            <select name="v_vehicleType">
+              <option value="carro">Carro</option><option value="moto">Moto</option>
+              <option value="caminhao">Caminhão</option><option value="onibus">Ônibus</option>
+              <option value="outro">Outro</option>
+            </select>
+          </label>
+          <label>Marca <input name="v_brand" placeholder="Ex: Volkswagen"></label>
+          <label>Modelo <input name="v_model" placeholder="Ex: Gol"></label>
+          <label>Versão <input name="v_version" placeholder="Ex: 1.6 Comfortline"></label>
+          <label>Ano fabricação <input name="v_yearManufacture" type="number" min="1900" max="2100"></label>
+          <label>Ano modelo <input name="v_yearModel" type="number" min="1900" max="2100"></label>
+          <label>KM <input name="v_km" type="number" min="0"></label>
+          <label>Combustível
+            <select name="v_fuel">
+              <option value="flex">Flex</option><option value="gasolina">Gasolina</option>
+              <option value="etanol">Etanol</option><option value="diesel">Diesel</option>
+              <option value="gnv">GNV</option><option value="eletrico">Elétrico</option>
+              <option value="hibrido">Híbrido</option>
+            </select>
+          </label>
+          <label>Câmbio
+            <select name="v_transmission">
+              <option value="manual">Manual</option><option value="automatico">Automático</option>
+              <option value="automatizado">Automatizado</option><option value="cvt">CVT</option>
+            </select>
+          </label>
+          <label>Cor <input name="v_color"></label>
+          <label>Portas <input name="v_doors" type="number" min="0" max="6" value="4"></label>
+          <label>Final da placa <input name="v_plateEnd" maxlength="1"></label>
+          <label class="check"><input name="v_licensed" type="checkbox" checked> Licenciado, sem débitos</label>
+          <label class="check"><input name="v_singleOwner" type="checkbox"> Único dono</label>
+          <label class="full">Opcionais (separados por vírgula)
+            <input name="v_features" placeholder="Ar-condicionado, direção hidráulica, airbag">
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="full" id="attrs-imovel" hidden>
+        <legend>Dados do imóvel</legend>
+        <div class="fields">
+          <label>Operação
+            <select name="i_operation">
+              <option value="venda">Venda</option><option value="aluguel">Aluguel</option>
+              <option value="temporada">Temporada</option>
+            </select>
+          </label>
+          <label>Tipo
+            <select name="i_propertyType">
+              <option value="apartamento">Apartamento</option><option value="casa">Casa</option>
+              <option value="terreno">Terreno</option><option value="comercial">Comercial</option>
+              <option value="rural">Rural</option><option value="galpao">Galpão</option>
+            </select>
+          </label>
+          <label>Área útil (m²) <input name="i_usableAreaM2" type="number" min="0" step="0.01"></label>
+          <label>Área total (m²) <input name="i_totalAreaM2" type="number" min="0" step="0.01"></label>
+          <label>Quartos <input name="i_bedrooms" type="number" min="0"></label>
+          <label>Suítes <input name="i_suites" type="number" min="0"></label>
+          <label>Banheiros <input name="i_bathrooms" type="number" min="0"></label>
+          <label>Vagas <input name="i_parkingSpots" type="number" min="0"></label>
+          <label>Condomínio (R$) <input name="i_condoFee" type="number" min="0" step="0.01"></label>
+          <label>IPTU (R$) <input name="i_iptu" type="number" min="0" step="0.01"></label>
+          <label class="check"><input name="i_furnished" type="checkbox"> Mobiliado</label>
+          <label class="full">Diferenciais (separados por vírgula)
+            <input name="i_features" placeholder="Piscina, churrasqueira, portaria 24h">
+          </label>
+        </div>
+      </fieldset>
+    </div>
+
+    <footer class="dlg-foot">
+      <span id="form-erro" class="erro"></span>
+      <button type="button" class="ghost" data-close>Cancelar</button>
+      <button type="submit" class="primary">Salvar</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- DETALHE / PUBLICAÇÃO -->
+<dialog id="dlg-detalhe">
+  <div class="dlg-head"><h2 id="det-titulo"></h2>
+    <button type="button" class="ghost" data-close>Fechar</button></div>
+  <div id="det-corpo"></div>
+</dialog>
+
+<!-- KIT MANUAL -->
+<dialog id="dlg-kit">
+  <div class="dlg-head"><h2 id="kit-titulo">Kit de publicação</h2>
+    <button type="button" class="ghost" data-close>Fechar</button></div>
+  <div id="kit-corpo"></div>
+</dialog>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

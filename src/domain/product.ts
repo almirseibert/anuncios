@@ -1,0 +1,111 @@
+import { z } from 'zod';
+
+export const KINDS = ['geral', 'veiculo', 'imovel'] as const;
+export type Kind = (typeof KINDS)[number];
+
+const str = (max: number) => z.string().trim().max(max);
+
+/** Atributos extras de item avulso (movel, eletronico, ferramenta...). */
+export const geralAttrs = z.object({
+  brand: str(60).default(''),
+  model: str(60).default(''),
+  wear: z.enum(['novo', 'seminovo', 'bom', 'usado_marcas', 'para_reparo']).default('bom'),
+  warranty: str(80).default(''),
+});
+
+export const veiculoAttrs = z.object({
+  vehicleType: z.enum(['carro', 'moto', 'caminhao', 'onibus', 'outro']).default('carro'),
+  brand: str(40),
+  model: str(80),
+  version: str(80).default(''),
+  yearManufacture: z.coerce.number().int().min(1900).max(2100),
+  yearModel: z.coerce.number().int().min(1900).max(2100),
+  km: z.coerce.number().int().min(0).max(3_000_000),
+  fuel: z.enum(['flex', 'gasolina', 'etanol', 'diesel', 'gnv', 'eletrico', 'hibrido']).default('flex'),
+  transmission: z.enum(['manual', 'automatico', 'automatizado', 'cvt']).default('manual'),
+  color: str(30).default(''),
+  doors: z.coerce.number().int().min(0).max(6).default(4),
+  plateEnd: str(1).default(''),
+  licensed: z.boolean().default(true),
+  singleOwner: z.boolean().default(false),
+  features: z.array(str(40)).default([]),
+});
+
+export const imovelAttrs = z.object({
+  operation: z.enum(['venda', 'aluguel', 'temporada']).default('venda'),
+  propertyType: z.enum(['apartamento', 'casa', 'terreno', 'comercial', 'rural', 'galpao']).default('apartamento'),
+  usableAreaM2: z.coerce.number().min(0).max(1_000_000).default(0),
+  totalAreaM2: z.coerce.number().min(0).max(1_000_000).default(0),
+  bedrooms: z.coerce.number().int().min(0).max(30).default(0),
+  suites: z.coerce.number().int().min(0).max(30).default(0),
+  bathrooms: z.coerce.number().int().min(0).max(30).default(0),
+  parkingSpots: z.coerce.number().int().min(0).max(30).default(0),
+  condoFeeCents: z.coerce.number().int().min(0).default(0),
+  iptuCents: z.coerce.number().int().min(0).default(0),
+  furnished: z.boolean().default(false),
+  features: z.array(str(40)).default([]),
+});
+
+export const attrsByKind = {
+  geral: geralAttrs,
+  veiculo: veiculoAttrs,
+  imovel: imovelAttrs,
+} satisfies Record<Kind, z.ZodTypeAny>;
+
+const base = z.object({
+  title: str(120).min(5, 'titulo precisa de pelo menos 5 caracteres'),
+  description: str(8000).default(''),
+  priceCents: z.coerce.number().int().min(0),
+  condition: z.enum(['novo', 'usado']).default('usado'),
+  quantity: z.coerce.number().int().min(1).max(9999).default(1),
+  acceptsTrade: z.boolean().default(false),
+  cep: str(9).default(''),
+  city: str(80).default(''),
+  uf: str(2).default(''),
+  neighborhood: str(80).default(''),
+});
+
+export const productInput = z.discriminatedUnion('kind', [
+  base.extend({ kind: z.literal('geral'), attrs: geralAttrs.default({}) }),
+  base.extend({ kind: z.literal('veiculo'), attrs: veiculoAttrs }),
+  base.extend({ kind: z.literal('imovel'), attrs: imovelAttrs.default({}) }),
+]);
+
+export type ProductInput = z.infer<typeof productInput>;
+
+export interface ProductImage {
+  id: string;
+  filename: string;
+  mime: string;
+  position: number;
+  url: string;
+}
+
+/** Produto como o resto do sistema consome: campos normalizados + imagens resolvidas. */
+export interface Product {
+  id: string;
+  kind: Kind;
+  title: string;
+  description: string;
+  priceCents: number;
+  condition: 'novo' | 'usado';
+  quantity: number;
+  acceptsTrade: boolean;
+  cep: string;
+  city: string;
+  uf: string;
+  neighborhood: string;
+  attrs: Record<string, unknown>;
+  archived: boolean;
+  images: ProductImage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function formatBRL(cents: number) {
+  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+export function kmFormat(km: number) {
+  return `${km.toLocaleString('pt-BR')} km`;
+}

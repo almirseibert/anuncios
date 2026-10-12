@@ -1,0 +1,12 @@
+services:
+  anuncios:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
