@@ -27,12 +27,18 @@ import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
 import { authEnabled } from '../lib/auth.ts';
 import { toString as qrToString } from 'qrcode';
 
+/**
+ * Fotos de catalogo escolhidas no painel. So a `url` precisa ser valida: rotulo
+ * e procedencia sao informativos e vem do ML como vierem (permalink vazio,
+ * nome longo) -- recusar o lote por causa deles era o 400 ao usar as fotos.
+ * O limite acompanha o painel, que mostra ate 12 candidatas.
+ */
 const referenceBody = z.object({
   images: z.array(z.object({
     url: z.string().url(),
-    label: z.string().max(200).optional(),
-    sourceUrl: z.string().url().optional(),
-  })).min(1).max(10),
+    label: z.string().optional().transform((v) => (v ?? '').slice(0, 200)),
+    sourceUrl: z.string().optional(),
+  })).min(1).max(24),
 });
 
 const fromUrlBody = z.object({ url: z.string().url() });
@@ -265,19 +271,34 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const parsed = referenceBody.safeParse(req.body);
     if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
 
+    // Uma foto que nao baixa nao pode derrubar as outras: cada uma e tentada
+    // por si, e as falhas voltam para o painel.
+    const falhas: Array<{ url: string; error: string }> = [];
+    let adicionadas = 0;
     for (const item of parsed.data.images) {
-      // Tenta a variante de maior resolucao e cai para a URL que a API deu.
-      const buf = await fetchFirstImage(urlVariants(item.url));
-      const processed = await processUpload(buf, { productId: id });
-      addImage(id, {
-        ...processed,
-        origin: 'catalogo',
-        sourceUrl: item.sourceUrl ?? item.url,
-        sourceLabel: item.label ?? '',
+      try {
+        // Tenta a variante de maior resolucao e cai para a URL que a API deu.
+        const buf = await fetchFirstImage(urlVariants(item.url));
+        const processed = await processUpload(buf, { productId: id });
+        addImage(id, {
+          ...processed,
+          origin: 'catalogo',
+          sourceUrl: /^https?:\/\//.test(item.sourceUrl ?? '') ? item.sourceUrl! : item.url,
+          sourceLabel: item.label,
+        });
+        adicionadas++;
+      } catch (err) {
+        falhas.push({ url: item.url, error: (err as Error).message });
+      }
+    }
+    if (!adicionadas) {
+      return reply.status(502).send({
+        error: `nenhuma foto do catalogo pode ser baixada: ${falhas.map((f) => f.error).join('; ')}`,
+        falhas,
       });
     }
-    logEvent('info', `${parsed.data.images.length} foto(s) de catalogo adicionadas`, { productId: id });
-    return reply.status(201).send({ product: getProduct(id) });
+    logEvent('info', `${adicionadas} foto(s) de catalogo adicionadas`, { productId: id, data: falhas.length ? { falhas } : undefined });
+    return reply.status(201).send({ product: getProduct(id), adicionadas, falhas });
   });
 
   /** Importa uma foto de um link que voce colou (Drive, Fotos, anuncio antigo). */

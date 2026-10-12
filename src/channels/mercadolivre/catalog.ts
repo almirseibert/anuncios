@@ -166,7 +166,8 @@ export async function catalogPictures(productId: string): Promise<CatalogCandida
   });
 
   const label = res.name?.trim() || productId;
-  const sourceUrl = res.permalink ?? `https://www.mercadolivre.com.br/p/${productId}`;
+  // permalink pode vir vazio (""), nao so ausente
+  const sourceUrl = res.permalink || `https://www.mercadolivre.com.br/p/${productId}`;
   return (res.pictures ?? [])
     .map((p) => p.url)
     .filter((u): u is string => typeof u === 'string' && u.length > 0)

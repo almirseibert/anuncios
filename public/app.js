@@ -480,10 +480,13 @@ async function abrirCatalogo(productId) {
     ev.target.disabled = true;
     $('#ref-status').textContent = 'baixando...';
     try {
-      await api(`/products/${productId}/reference-images`, {
+      const r = await api(`/products/${productId}/reference-images`, {
         method: 'POST',
         body: JSON.stringify({ images: escolhidas }),
       });
+      if (r.falhas?.length) {
+        alert(`${r.adicionadas} foto(s) adicionada(s). ${r.falhas.length} não baixaram:\n${r.falhas.map((f) => f.error).join('\n')}`);
+      }
       await loadProducts();
       openDetail(productId);
     } catch (err) {
