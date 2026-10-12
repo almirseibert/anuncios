@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS products (
   uf            TEXT NOT NULL DEFAULT '',
   neighborhood  TEXT NOT NULL DEFAULT '',
   attrs_json    TEXT NOT NULL DEFAULT '{}',
+  -- atributos exigidos por cada plataforma (ex.: VOLTAGE no ML), fora de attrs
+  -- de proposito: o formulario do produto regrava attrs e apagaria estes.
+  channel_attrs_json TEXT NOT NULL DEFAULT '{}',
   archived      INTEGER NOT NULL DEFAULT 0,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
@@ -103,5 +106,10 @@ export const COLUMN_MIGRATIONS: ReadonlyArray<{ table: string; column: string; d
     table: 'images',
     column: 'original_filename',
     ddl: "ALTER TABLE images ADD COLUMN original_filename TEXT NOT NULL DEFAULT ''",
+  },
+  {
+    table: 'products',
+    column: 'channel_attrs_json',
+    ddl: "ALTER TABLE products ADD COLUMN channel_attrs_json TEXT NOT NULL DEFAULT '{}'",
   },
 ];

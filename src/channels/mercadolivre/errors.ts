@@ -18,7 +18,9 @@ export function atributosFaltando(detail: unknown): string[] {
   const causas = (detail as { cause?: MlCause[] } | undefined)?.cause ?? [];
   const ids = new Set<string>();
   for (const c of causas) {
-    if (!c.code?.startsWith('item.attribute.missing')) continue;
+    // O ML usa as duas formas: "item.attribute.missing_conditional_required"
+    // (GTIN) e "item.attributes.missing_required" (VOLTAGE).
+    if (!/^item\.attributes?\.missing/.test(c.code ?? '')) continue;
     const lista = /\[([^\]]+)\]/.exec(c.message ?? '')?.[1];
     for (const id of (lista ?? '').split(',').map((s) => s.trim()).filter(Boolean)) ids.add(id);
   }
@@ -29,10 +31,17 @@ export function atributosFaltando(detail: unknown): string[] {
 export function dicaDoErro(detail: unknown): string | undefined {
   const faltando = atributosFaltando(detail);
   if (!faltando.length) return undefined;
-  const partes = faltando.map((id) => CAMPO_DO_ATRIBUTO[id]
-    ? `"${CAMPO_DO_ATRIBUTO[id]}"`
-    : `${id} (a categoria exige, e o formulário ainda não tem esse campo — me avise)`);
-  return `Preencha no cadastro do produto: ${partes.join('; ')}.`;
+  const doCadastro = faltando.filter((id) => CAMPO_DO_ATRIBUTO[id]);
+  const daCategoria = faltando.filter((id) => !CAMPO_DO_ATRIBUTO[id]);
+  const frases: string[] = [];
+  if (doCadastro.length) {
+    frases.push(`Preencha no cadastro do produto: ${doCadastro.map((id) => `"${CAMPO_DO_ATRIBUTO[id]}"`).join('; ')}.`);
+  }
+  if (daCategoria.length) {
+    // atributos proprios da categoria: o painel pergunta ao ML e mostra o campo
+    frases.push(`Abra "Atributos do Mercado Livre" no produto e preencha: ${daCategoria.join(', ')}.`);
+  }
+  return frases.join(' ');
 }
 
 /**

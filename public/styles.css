@@ -70,7 +70,8 @@ small.muted { font-size: .8rem; }
   border: 1px solid var(--line); border-radius: 999px; padding: .1rem .55rem;
 }
 .pill.publicado { color: var(--ok); border-color: currentColor; }
-.pill.erro { color: var(--err); border-color: currentColor; }
+/* .erro (texto de erro) tem flex: 1; no selo isso esticava o status pela linha inteira. */
+.pill.erro { color: var(--err); border-color: currentColor; flex: none; font-size: .75rem; }
 .pill.rascunho, .pill.publicando { color: var(--warn); border-color: currentColor; }
 .pill.pausado, .pill.encerrado { color: var(--muted); }
 

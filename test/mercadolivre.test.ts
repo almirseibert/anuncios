@@ -29,7 +29,7 @@ function produto(over: Partial<Product> = {}): Product {
     uf: 'RS',
     neighborhood: 'Centro',
     attrs: { brand: 'Sony', model: 'Playstation 4 Slim' },
-    archived: false,
+    channelAttrs: {}, archived: false,
     images: [{
       id: 'i1', filename: 'a.jpg', mime: 'image/jpeg', position: 0, url: 'https://exemplo.com/a.jpg',
       width: 1600, height: 1200, origin: 'upload', sourceUrl: '', sourceLabel: '', originalFilename: '',

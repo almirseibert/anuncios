@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { all, get, nowIso, run, tx } from '../db/index.ts';
 import { config } from '../config.ts';
-import { isOwnPhoto, type ImageOrigin, type Product, type ProductInput, type ProductImage } from '../domain/product.ts';
+import {
+  isOwnPhoto, type ChannelAttrs, type ImageOrigin, type Product, type ProductInput, type ProductImage,
+} from '../domain/product.ts';
 import { ImageError } from './images.ts';
 
 interface ProductRow {
   id: string; kind: Product['kind']; title: string; description: string;
   price_cents: number; condition: 'novo' | 'usado'; quantity: number;
   accepts_trade: number; cep: string; city: string; uf: string; neighborhood: string;
-  attrs_json: string; archived: number; created_at: string; updated_at: string;
+  attrs_json: string; channel_attrs_json: string; archived: number; created_at: string; updated_at: string;
 }
 
 interface ImageRow {
@@ -36,6 +38,7 @@ function hydrate(row: ProductRow, images: ImageRow[]): Product {
     uf: row.uf,
     neighborhood: row.neighborhood,
     attrs: JSON.parse(row.attrs_json) as Record<string, unknown>,
+    channelAttrs: JSON.parse(row.channel_attrs_json || '{}') as ChannelAttrs,
     archived: row.archived === 1,
     images: images
       .filter((i) => i.product_id === row.id)
@@ -174,4 +177,18 @@ export function reorderImages(productId: string, orderedIds: string[]) {
     });
     run('UPDATE products SET updated_at=? WHERE id=?', nowIso(), productId);
   });
+}
+
+/**
+ * Grava os atributos de UMA plataforma, sem tocar nos das outras nem nos dados
+ * do produto. Separado de updateProduct de proposito: salvar o formulario do
+ * produto nao pode apagar o que foi preenchido para o Mercado Livre.
+ */
+export function setChannelAttrs<K extends keyof ChannelAttrs>(id: string, channel: K, value: ChannelAttrs[K]) {
+  const row = get<{ channel_attrs_json: string }>('SELECT channel_attrs_json FROM products WHERE id = ?', id);
+  if (!row) return undefined;
+  const atual = JSON.parse(row.channel_attrs_json || '{}') as ChannelAttrs;
+  atual[channel] = value;
+  run('UPDATE products SET channel_attrs_json=?, updated_at=? WHERE id=?', JSON.stringify(atual), nowIso(), id);
+  return getProduct(id);
 }

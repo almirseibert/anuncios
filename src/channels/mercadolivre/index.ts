@@ -65,7 +65,10 @@ async function dryRun(product: PublishContext['product']): Promise<PublishResult
     };
   }
 
-  const categoryId = await predictCategory(product.title, token);
+  // Se os atributos foram preenchidos numa categoria, publica nela: outra
+  // categoria exigiria outros atributos.
+  const categoryId = product.channelAttrs?.mercadolivre?.categoryId
+    ?? await predictCategory(product.title, token);
   const payload = buildItem(product, categoryId);
   try {
     const result = await request(`${ML_API}/items/validate`, {
@@ -96,7 +99,10 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
 
   const account = await ensureToken();
   const token = account.accessToken!;
-  const categoryId = await predictCategory(product.title, token);
+  // Se os atributos foram preenchidos numa categoria, publica nela: outra
+  // categoria exigiria outros atributos.
+  const categoryId = product.channelAttrs?.mercadolivre?.categoryId
+    ?? await predictCategory(product.title, token);
   const payload = buildItem(product, categoryId);
 
   let created: { id: string; permalink: string; status: string };

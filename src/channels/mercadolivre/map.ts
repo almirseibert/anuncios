@@ -129,6 +129,25 @@ export function saleTerms(product: Product): MlAttribute[] {
   return termos;
 }
 
+/** IDs que o cadastro do produto ja preenche -- o painel de atributos do ML nao os pede de novo. */
+export function formAttributeIds(product: Product): Set<string> {
+  return new Set([...attrs(product).map((a) => a.id), 'BRAND', 'MODEL', 'GTIN', 'EMPTY_GTIN_REASON', 'ITEM_CONDITION']);
+}
+
+/**
+ * Atributos do anuncio: os que saem do cadastro e, por cima, os preenchidos no
+ * painel "Atributos do Mercado Livre". O do painel ganha quando os dois existem,
+ * porque foi escolhido no vocabulario do proprio ML (com o id da opcao).
+ */
+function allAttributes(product: Product): MlAttribute[] {
+  const porId = new Map(attrs(product).map((a) => [a.id, a] as const));
+  for (const [id, v] of Object.entries(product.channelAttrs?.mercadolivre?.attributes ?? {})) {
+    if (v.value_id) porId.set(id, { id, value_id: v.value_id });
+    else if (v.value_name?.trim()) porId.set(id, { id, value_name: v.value_name.trim() });
+  }
+  return [...porId.values()];
+}
+
 /** Tipo de exposicao: veiculos e imoveis usam listagens de classificados. */
 function listingTypeId(product: Product) {
   return product.kind === 'geral' ? 'gold_special' : 'silver';
@@ -174,7 +193,7 @@ export function buildItem(product: Product, categoryId?: string): MlItemPayload 
     condition: product.condition === 'novo' ? 'new' : 'used',
     listing_type_id: listingTypeId(product),
     pictures: product.images.map((i) => ({ source: i.url })),
-    attributes: attrs(product),
+    attributes: allAttributes(product),
     ...(isClassified ? {} : { sale_terms: saleTerms(product) }),
     ...(isClassified
       ? {

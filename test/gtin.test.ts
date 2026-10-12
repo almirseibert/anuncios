@@ -41,7 +41,7 @@ function produto(attrs: Record<string, unknown>): Product {
   return {
     id: 'p1', kind: 'geral', title: 'Playstation 4 Slim', description: 'x', priceCents: 100000,
     condition: 'usado', quantity: 1, acceptsTrade: false, cep: '', city: '', uf: '', neighborhood: '',
-    attrs: { brand: 'Sony', model: 'PS4 Slim', ...attrs }, archived: false, images: [],
+    attrs: { brand: 'Sony', model: 'PS4 Slim', ...attrs }, channelAttrs: {}, archived: false, images: [],
     createdAt: '', updatedAt: '',
   };
 }
@@ -81,9 +81,29 @@ test('o erro real do ML vira instrucao de qual campo preencher', () => {
   assert.match(dicaDoErro(erroReal)!, /Código de barras \(EAN\)/);
 });
 
-test('atributo que o formulario nao tem e dito com honestidade', () => {
-  const erro = { cause: [{ code: 'item.attribute.missing_required', message: 'The attributes [STORAGE_CAPACITY] are required' }] };
-  assert.match(dicaDoErro(erro)!, /STORAGE_CAPACITY.*formulário ainda não tem/);
+test('atributo da categoria manda para o painel de atributos do ML', () => {
+  // resposta real do ML para o console, depois do GTIN resolvido
+  const erro = { cause: [{
+    code: 'item.attributes.missing_required',
+    message: 'The attributes [VOLTAGE] are required for category MLB11172 and channel marketplace.',
+  }] };
+  assert.deepEqual(atributosFaltando(erro), ['VOLTAGE']);
+  assert.match(dicaDoErro(erro)!, /Atributos do Mercado Livre.*VOLTAGE/);
+});
+
+test('cadastro e categoria juntos geram as duas instrucoes', () => {
+  const erro = { cause: [
+    { code: 'item.attribute.missing_conditional_required', message: 'The attributes [GTIN] are required' },
+    { code: 'item.attributes.missing_required', message: 'The attributes [VOLTAGE, COLOR] are required' },
+  ] };
+  const dica = dicaDoErro(erro)!;
+  assert.match(dica, /Código de barras/);
+  assert.match(dica, /VOLTAGE, COLOR/);
+});
+
+test('aviso do ML (warning) nao vira instrucao', () => {
+  const soAviso = { cause: [{ type: 'warning', code: 'shipping.lost_me1_by_user', message: 'User has not mode me1' }] };
+  assert.equal(dicaDoErro(soAviso), undefined);
 });
 
 test('erro de outro tipo nao ganha dica inventada', () => {

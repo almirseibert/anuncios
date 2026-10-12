@@ -138,6 +138,23 @@ export interface ProductImage {
   originalFilename: string;
 }
 
+/** Valor de um atributo de plataforma: o id da opcao (quando a lista e fechada) e/ou o texto. */
+export interface ChannelAttrValue {
+  value_id?: string;
+  value_name?: string;
+}
+
+export interface MlChannelAttrs {
+  /** Categoria em que os atributos foram preenchidos; a publicacao usa a mesma. */
+  categoryId?: string;
+  categoryName?: string;
+  attributes: Record<string, ChannelAttrValue>;
+}
+
+export interface ChannelAttrs {
+  mercadolivre?: MlChannelAttrs;
+}
+
 /** Produto como o resto do sistema consome: campos normalizados + imagens resolvidas. */
 export interface Product {
   id: string;
@@ -153,6 +170,8 @@ export interface Product {
   uf: string;
   neighborhood: string;
   attrs: Record<string, unknown>;
+  /** Atributos exigidos por plataforma, ex.: `{ mercadolivre: { categoryId, attributes } }`. */
+  channelAttrs: ChannelAttrs;
   archived: boolean;
   images: ProductImage[];
   createdAt: string;

@@ -10,13 +10,16 @@ import { disconnectAccount, getAccount } from '../services/accounts.ts';
 import { logEvent, recentEvents } from '../services/events.ts';
 import {
   addImage, archiveProduct, createProduct, deleteProduct, getImage, getProduct,
-  listProducts, removeImage, reorderImages, updateProduct,
+  listProducts, removeImage, reorderImages, setChannelAttrs, updateProduct,
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
 import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
 import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
 import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
+import { fetchCategory, fetchCategoryAttributes, requiredFields } from '../channels/mercadolivre/categoryAttrs.ts';
+import { formAttributeIds, predictCategory } from '../channels/mercadolivre/map.ts';
+import { ensureToken } from '../channels/mercadolivre/auth.ts';
 import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
 import { authEnabled } from '../lib/auth.ts';
 import { toString as qrToString } from 'qrcode';
@@ -30,6 +33,15 @@ const referenceBody = z.object({
 });
 
 const fromUrlBody = z.object({ url: z.string().url() });
+
+const mlAttrsBody = z.object({
+  categoryId: z.string().regex(/^[A-Z]{3}\d+$/, 'categoria do ML no formato MLB1234'),
+  categoryName: z.string().max(200).optional(),
+  attributes: z.record(
+    z.string().regex(/^[A-Z0-9_]+$/),
+    z.object({ value_id: z.string().max(40).optional(), value_name: z.string().max(255).optional() }),
+  ),
+});
 
 const draftBody = z.object({
   kind: z.enum(['geral', 'veiculo', 'imovel']),
@@ -285,6 +297,57 @@ export async function registerApiRoutes(app: FastifyInstance) {
         ? 'PUBLIC_URL aponta para localhost: o celular nao vai abrir este link. Use o endereco publico do servidor.'
         : undefined,
     };
+  });
+
+  /**
+   * O que a categoria do Mercado Livre exige deste produto: a categoria (a ja
+   * salva, a pedida em ?categoryId=, ou a que o ML adivinha pelo titulo), os
+   * campos obrigatorios que o cadastro ainda nao cobre, com as opcoes que o ML
+   * aceita, e o que ja foi preenchido.
+   */
+  app.get('/products/:id/ml-attributes', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const { categoryId: pedida } = req.query as { categoryId?: string };
+    const product = getProduct(id);
+    if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
+
+    const token = (await ensureToken()).accessToken!;
+    const salvo = product.channelAttrs?.mercadolivre;
+    const categoryId = pedida?.trim().toUpperCase() || salvo?.categoryId || await predictCategory(product.title, token);
+    if (!categoryId) {
+      return reply.status(422).send({
+        error: 'o Mercado Livre nao achou categoria para este titulo. Coloque marca e modelo no titulo, ou informe a categoria.',
+      });
+    }
+
+    const [category, atributos] = await Promise.all([
+      fetchCategory(categoryId, token),
+      fetchCategoryAttributes(categoryId, token),
+    ]);
+    return {
+      category,
+      fields: requiredFields(atributos, formAttributeIds(product)),
+      // valores salvos so valem para a categoria em que foram escolhidos
+      saved: salvo?.categoryId === category.id ? salvo.attributes : {},
+    };
+  });
+
+  app.put('/products/:id/ml-attributes', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = mlAttrsBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: invalidMessage(parsed.error), issues: parsed.error.issues });
+
+    // campo deixado em branco nao vai para o ML
+    const attributes = Object.fromEntries(
+      Object.entries(parsed.data.attributes).filter(([, v]) => v.value_id || v.value_name?.trim()),
+    );
+    const product = setChannelAttrs(id, 'mercadolivre', {
+      categoryId: parsed.data.categoryId,
+      categoryName: parsed.data.categoryName,
+      attributes,
+    });
+    if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
+    return { product };
   });
 
   app.put('/products/:id/images/order', async (req) => {

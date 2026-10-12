@@ -22,7 +22,7 @@ const produto: Product = {
   id: 'p1', kind: 'geral', title: 'Playstation 4 Slim 1TB com 2 controles',
   description: 'Console conservado, sempre em casa.', priceCents: 120000, condition: 'usado',
   quantity: 1, acceptsTrade: false, cep: '90000000', city: 'Porto Alegre', uf: 'RS',
-  neighborhood: 'Centro', attrs: { brand: 'Sony', model: 'PS4 Slim' }, archived: false,
+  neighborhood: 'Centro', attrs: { brand: 'Sony', model: 'PS4 Slim' }, channelAttrs: {}, archived: false,
   images: [{
     id: 'i1', filename: 'a.jpg', mime: 'image/jpeg', position: 0, url: 'https://exemplo.com/a.jpg',
     width: 1600, height: 1200, origin: 'upload', sourceUrl: '', sourceLabel: '', originalFilename: '',

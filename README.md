@@ -150,6 +150,8 @@ Implemente a interface `Channel` (`src/channels/types.ts`) e registre em `src/ch
 | `POST` | `/api/products/:id/reference-images` | grava as que você aprovou |
 | `POST` | `/api/products/:id/images/from-url` | importa foto de um link |
 | `GET` | `/api/products/:id/upload-qr` | QR Code de envio pelo celular |
+| `GET` | `/api/products/:id/ml-attributes` | atributos que a categoria do ML exige (`?categoryId=` troca a categoria) |
+| `PUT` | `/api/products/:id/ml-attributes` | salva `{ categoryId, attributes }` |
 | `POST` | `/api/images/:imageId/enhance` | versão tratada por IA: `{ mode }` |
 | `GET` | `/m/:token` | página de envio de fotos pelo celular |
 | `POST` | `/api/products/:id/publish` | `{ channels, dryRun?, force? }` |
