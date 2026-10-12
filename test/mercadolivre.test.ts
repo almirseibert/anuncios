@@ -40,11 +40,31 @@ function produto(over: Partial<Product> = {}): Product {
   };
 }
 
-test('o payload leva family_name: sem ele a API do ML recusa a publicacao', () => {
+test('produto vai com family_name e SEM title: o ML recusa os dois juntos', () => {
   const item = buildItem(produto(), 'MLB1144');
   assert.equal(item.family_name, 'Sony Playstation 4 Slim');
-  // o titulo do anuncio continua sendo o do vendedor, nao o nome da familia
-  assert.equal(item.title, 'Playstation 4 Slim 1TB com 2 controles, pouco uso');
+  assert.equal(item.title, undefined, 'title e invalido no modelo de produto do ML');
+  assert.equal(item.buying_mode, 'buy_it_now');
+});
+
+test('classificado vai com title e SEM family_name: modelo antigo do ML', () => {
+  const item = buildItem(produto({
+    kind: 'veiculo',
+    title: 'Fiat Argo Drive 1.3 2021 completo, unico dono',
+    attrs: { brand: 'Fiat', model: 'Argo' },
+  }), 'MLB1744');
+  assert.equal(item.title, 'Fiat Argo Drive 1.3 2021 completo, unico dono');
+  assert.equal(item.family_name, undefined);
+  assert.equal(item.buying_mode, 'classified');
+});
+
+test('o titulo do classificado e cortado em 60 caracteres', () => {
+  const item = buildItem(produto({
+    kind: 'imovel',
+    title: 'Apartamento de 2 dormitorios com suite, vaga coberta e sacada no centro historico',
+    attrs: { propertyType: 'apartamento' },
+  }), 'MLB1459');
+  assert.equal(item.title!.length, 60);
 });
 
 test('family_name usa marca e modelo; sem eles, cai no titulo', () => {

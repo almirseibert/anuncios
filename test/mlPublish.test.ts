@@ -111,7 +111,10 @@ test('publicando de verdade, a descricao vai numa chamada propria depois do item
   assert.deepEqual(rotas.slice(-2), ['POST /items', 'POST /items/MLB123/description']);
 
   const criacao = chamadas.find((c) => new URL(c.url).pathname === '/items')!;
-  assert.equal('description' in (criacao.body as object), false, 'o ML recusa description no corpo do item');
+  const corpo = criacao.body as Record<string, unknown>;
+  assert.equal('description' in corpo, false, 'o ML recusa description no corpo do item');
+  assert.equal('title' in corpo, false, 'o ML recusa title quando vai family_name');
+  assert.equal(corpo.family_name, 'Sony PS4 Slim');
 
   const descricao = chamadas.at(-1)!.body as { plain_text: string };
   assert.match(descricao.plain_text, /Console conservado/);

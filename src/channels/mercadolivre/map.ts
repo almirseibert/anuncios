@@ -116,10 +116,19 @@ function listingTypeId(product: Product) {
   return product.kind === 'geral' ? 'gold_special' : 'silver';
 }
 
+/**
+ * O Mercado Livre tem dois modelos de publicacao, e os campos de nome NUNCA
+ * vao juntos -- mandar os dois e recusado com
+ * "The fields [title] are invalid for requested call":
+ *
+ * - produto (buy_it_now): manda `family_name`, o nome do produto, e o ML monta
+ *   o titulo exibido a partir dele e dos atributos. `title` e invalido aqui.
+ * - classificado (veiculo, imovel): manda `title`, que e o titulo do anuncio
+ *   escrito pelo vendedor. `family_name` nao se aplica.
+ */
 export interface MlItemPayload {
-  title: string;
-  /** Nome do produto (familia). Obrigatorio na API de items desde 2025. */
-  family_name: string;
+  title?: string;
+  family_name?: string;
   category_id?: string;
   price: number;
   currency_id: 'BRL';
@@ -136,8 +145,9 @@ export interface MlItemPayload {
 export function buildItem(product: Product, categoryId?: string): MlItemPayload {
   const isClassified = product.kind !== 'geral';
   return {
-    title: product.title.slice(0, 60),
-    family_name: familyName(product),
+    ...(isClassified
+      ? { title: product.title.slice(0, 60) }
+      : { family_name: familyName(product) }),
     category_id: categoryId,
     price: product.priceCents / 100,
     currency_id: 'BRL',
