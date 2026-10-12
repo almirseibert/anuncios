@@ -2,6 +2,7 @@ import { config } from '../../config.ts';
 import type { Product } from '../../domain/product.ts';
 import type { Channel, PublishContext, PublishResult, ValidationIssue } from '../types.ts';
 import { buildOlxAd } from './feed.ts';
+import { photoIssues } from '../../services/images.ts';
 
 export const CHANNEL_ID = 'olx';
 
@@ -10,6 +11,7 @@ function validate(product: Product): ValidationIssue[] {
   if (product.images.length === 0) {
     issues.push({ field: 'images', severity: 'error', message: 'a OLX exige pelo menos 1 foto' });
   }
+  issues.push(...photoIssues('olx', product, 'a OLX'));
   if (!(product.cep || config.seller.cep)) {
     issues.push({ field: 'cep', severity: 'error', message: 'CEP e obrigatorio na OLX (define a regiao do anuncio)' });
   }

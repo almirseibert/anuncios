@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { config } from '../config.ts';
-import { SCHEMA } from './schema.ts';
+import { COLUMN_MIGRATIONS, SCHEMA } from './schema.ts';
 
 mkdirSync(dirname(config.dbFile), { recursive: true });
 mkdirSync(config.uploadsDir, { recursive: true });
@@ -11,6 +11,27 @@ export const db = new DatabaseSync(config.dbFile);
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
 db.exec(SCHEMA);
+migrate();
+
+/** Aplica as colunas de COLUMN_MIGRATIONS que faltarem no banco existente. */
+function migrate() {
+  const cache = new Map<string, Set<string>>();
+  const columnsOf = (table: string) => {
+    let cols = cache.get(table);
+    if (!cols) {
+      const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      cols = new Set(rows.map((r) => r.name));
+      cache.set(table, cols);
+    }
+    return cols;
+  };
+  for (const m of COLUMN_MIGRATIONS) {
+    const cols = columnsOf(m.table);
+    if (cols.has(m.column)) continue;
+    db.exec(m.ddl);
+    cols.add(m.column);
+  }
+}
 
 type Row = Record<string, unknown>;
 

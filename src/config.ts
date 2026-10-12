@@ -1,6 +1,24 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
+
+function packageVersion() {
+  try {
+    return (JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as { version?: string }).version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+/**
+ * URL que so o proprio computador alcanca. As plataformas baixam as fotos pela
+ * PUBLIC_URL, entao url local significa que nenhuma foto chega -- e significa
+ * tambem que o app nao esta exposto na internet.
+ */
+export function isLocalUrl(url: string) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\])(:|\/|$)/.test(url);
+}
 
 function bool(v: string | undefined, fallback: boolean) {
   if (v === undefined) return fallback;
@@ -9,6 +27,7 @@ function bool(v: string | undefined, fallback: boolean) {
 
 export const config = {
   root,
+  version: packageVersion(),
   port: Number(process.env.PORT ?? 3000),
   host: process.env.HOST ?? '127.0.0.1',
   publicUrl: (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3000}`).replace(/\/$/, ''),
@@ -28,6 +47,19 @@ export const config = {
   gemini: {
     apiKey: process.env.GEMINI_API_KEY ?? '',
     model: process.env.GEMINI_MODEL ?? 'gemini-2.5-flash',
+    imageModel: process.env.GEMINI_IMAGE_MODEL ?? 'gemini-2.5-flash-image',
+  },
+  /** Basic auth do painel. Sem senha o hook nao e registrado (uso local). */
+  admin: {
+    user: process.env.ADMIN_USER ?? 'admin',
+    pass: process.env.ADMIN_PASS ?? '',
+    /** Escape consciente para rodar sem senha mesmo com PUBLIC_URL publica. */
+    allowNoAuth: bool(process.env.ALLOW_NO_AUTH, false),
+  },
+  image: {
+    /** Lado maior do derivado servido as plataformas. */
+    maxSide: Number(process.env.IMAGE_MAX_SIDE ?? 1600),
+    quality: Number(process.env.IMAGE_QUALITY ?? 85),
   },
   channels: {
     mercadolivre: {

@@ -45,6 +45,20 @@ A saída é validada contra um schema antes de chegar ao formulário — se o mo
 
 Configure com `GEMINI_API_KEY` no `.env` (chave em <https://aistudio.google.com/apikey>). Sem a chave o painel aparece desabilitado e o resto do sistema funciona normalmente. O padrão é `gemini-2.5-flash`; `GEMINI_MODEL=gemini-2.5-pro` escreve um pouco melhor e custa mais por anúncio.
 
+## As fotos
+
+Foto é o que vende o anúncio, e é também o que mais dá trabalho. O sistema cuida de quatro coisas:
+
+**Tratamento automático, no envio.** Toda imagem é girada conforme o EXIF (a foto do celular chegava deitada), reduzida para caber em 1600 px, convertida em JPEG progressivo e **tem todo o metadado removido** — foto de celular carrega a coordenada GPS de onde foi tirada, e o arquivo em `/uploads` é público para as plataformas baixarem. O arquivo original fica guardado em `data/uploads/originals`, intacto.
+
+**Capa e ordem.** Arraste os quadros para reordenar; o primeiro é a capa. A capa só pode ser foto sua — o sistema recusa pôr uma foto de catálogo na primeira posição, e bloqueia a publicação de produto que não tenha nenhuma foto do item real. Mercado Livre e OLX derrubam anúncio de usado ilustrado só com foto de divulgação.
+
+**De onde vem a foto.** Do computador; do celular, pelo botão **Enviar do celular** (QR Code que abre uma página de envio válida por 2 horas, sem precisar digitar senha no telefone); ou de um link que você cola.
+
+**Fotos do catálogo do Mercado Livre.** Em **Buscar fotos do catálogo**, o sistema procura o produto pelo título no catálogo do próprio ML e mostra as fotos oficiais do modelo. Você marca as que quiser; elas entram **depois** das suas, com o selo *ilustrativa*, e a descrição ganha automaticamente a frase dizendo quais fotos são do item real e quais ilustram o modelo. Só vale para produtos de linha (`geral`) — veículo e imóvel não têm catálogo.
+
+**Melhorar foto (✨).** Com `GEMINI_API_KEY` configurada, cada foto ganha um botão que gera uma versão tratada (fundo limpo, correção de luz, enquadramento quadrado). A versão entra como imagem nova, ao lado da sua: você compara e decide manter ou desfazer. O pedido ao modelo proíbe esconder arranhão, amassado e desgaste, e proíbe acrescentar ou trocar peça — foto que esconde defeito vira reclamação e, no Mercado Livre, atinge a reputação do vendedor.
+
 ## Rodando
 
 ```bash
@@ -82,6 +96,14 @@ e coloque a URL gerada em `PUBLIC_URL`.
 
 A validação roda antes do envio e separa **bloqueios** (sem foto, sem preço, sem marca em veículo) de **avisos** (título que será cortado, `PUBLIC_URL` local). Bloqueio impede a publicação, a menos que você marque "ignorar bloqueios".
 
+## Publicando na internet
+
+As plataformas **baixam as fotos** pela `PUBLIC_URL` e o Mercado Livre exige HTTPS no retorno do login — então o sistema precisa de um endereço público antes de publicar de verdade. O passo a passo completo (VPS, Easypanel, domínio com HTTPS, volume das fotos, backup) está em [docs/DEPLOY-EASYPANEL.md](docs/DEPLOY-EASYPANEL.md).
+
+Exposto na internet, o painel passa a pedir usuário e senha: preencha `ADMIN_USER` e `ADMIN_PASS`. Se `PUBLIC_URL` não for local e `ADMIN_PASS` estiver vazio, **o servidor se recusa a iniciar** e diz o que falta (`ALLOW_NO_AUTH=true` libera, para quem quer mesmo o painel aberto). Em `localhost` nada muda: sem senha, como antes.
+
+Ficam livres de senha, de propósito, as rotas que precisam disso para funcionar — `/uploads` (é por ela que as plataformas baixam as fotos; se pedisse senha, nenhuma imagem chegaria ao anúncio), `/feeds` (tem token próprio), `/produtos/:id` (página pública do anúncio), `/oauth/*` (callback) e `/m/*` (envio de fotos pelo celular, autenticado pelo token do link). Ou seja: a foto do anúncio abre em janela anônima mesmo com o login ligado — isso é o esperado.
+
 ## Credenciais
 
 Nenhuma é obrigatória para usar o sistema em dry-run. O passo a passo de cada plataforma está em [docs/CREDENCIAIS.md](docs/CREDENCIAIS.md).
@@ -96,12 +118,18 @@ src/
   channels/              um adapter por plataforma
     types.ts             o contrato Channel que todos implementam
     registry.ts          lista de canais ativos
+    mercadolivre/catalog.ts  fotos oficiais do catálogo do ML
+  lib/auth.ts            basic auth do painel
   services/
     ai.ts                geração de texto via Gemini (prompt + schema de saída)
+    images.ts            tratamento das fotos (sharp) e limites por canal
+    imageAi.ts           "melhorar foto" via Gemini
+    uploadTokens.ts      link temporário de envio pelo celular
     products.ts          CRUD e imagens
     publish.ts           orquestra validação → publicação → listing → evento
     templates.ts         geração de texto (descrição, post de grupo, WhatsApp)
-  routes/                API REST, OAuth, feed XML, página pública do produto
+  routes/                API REST, OAuth, feed XML, páginas pública e do celular
+test/                    node --test (npm test)
 public/                  painel (HTML/CSS/JS sem build)
 ```
 
@@ -116,7 +144,14 @@ Implemente a interface `Channel` (`src/channels/types.ts`) e registre em `src/ch
 | `GET` | `/api/products` | lista com os anúncios de cada canal |
 | `POST` | `/api/products` | cria produto |
 | `PUT` | `/api/products/:id` | atualiza |
-| `POST` | `/api/products/:id/images` | upload (multipart, jpeg/png/webp, 15 MB) |
+| `POST` | `/api/products/:id/images` | upload (multipart, jpeg/png/webp/heic, 15 MB) |
+| `PUT` | `/api/products/:id/images/order` | reordena; recusa foto ilustrativa na capa |
+| `GET` | `/api/products/:id/reference-images` | fotos do catálogo do ML para o título |
+| `POST` | `/api/products/:id/reference-images` | grava as que você aprovou |
+| `POST` | `/api/products/:id/images/from-url` | importa foto de um link |
+| `GET` | `/api/products/:id/upload-qr` | QR Code de envio pelo celular |
+| `POST` | `/api/images/:imageId/enhance` | versão tratada por IA: `{ mode }` |
+| `GET` | `/m/:token` | página de envio de fotos pelo celular |
 | `POST` | `/api/products/:id/publish` | `{ channels, dryRun?, force? }` |
 | `GET` | `/api/products/:id/kit/:channel` | kit de publicação manual |
 | `POST` | `/api/products/:id/listings/:channel/pause\|close` | pausa/encerra |
@@ -130,7 +165,7 @@ Implemente a interface `Channel` (`src/channels/types.ts`) e registre em `src/ch
 
 ## Limitações conhecidas
 
-- O servidor **não tem autenticação**: ele serve em `127.0.0.1` e assume uso local. Se expuser na internet, coloque atrás de um proxy com autenticação — o feed XML tem token próprio, mas a API não.
+- A autenticação é um Basic Auth de usuário único (`ADMIN_USER`/`ADMIN_PASS`). Serve para um painel pessoal; não há múltiplos usuários, perfis nem registro de quem fez o quê.
 - O schema do feed da OLX está em `src/channels/olx/feed.ts` e segue a estrutura pública do autoupload. A OLX entrega o manual definitivo com a aprovação da integração e os nomes de campo variam por vertical: ajuste **só esse arquivo**.
 - A categoria do Mercado Livre é adivinhada pelo título (`domain_discovery`). Se cair na categoria errada, a API recusa atributos obrigatórios — o erro aparece íntegro no histórico.
 - O texto gerado pela IA é um rascunho: ele parte do que você escreveu, e o que foi deduzido fica listado em "Deduções da IA". Confira antes de publicar — anúncio com informação errada gera reclamação e, no Mercado Livre, prejudica a reputação.

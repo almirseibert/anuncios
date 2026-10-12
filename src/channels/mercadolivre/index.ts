@@ -1,22 +1,24 @@
-import { config } from '../../config.ts';
+import { config, isLocalUrl } from '../../config.ts';
 import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import type { Channel, PublishContext, PublishResult, ValidationIssue } from '../types.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, predictCategory } from './map.ts';
+import { photoIssues } from '../../services/images.ts';
 
 function validate(product: Product): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   if (product.images.length === 0) {
     issues.push({ field: 'images', severity: 'error', message: 'o Mercado Livre exige pelo menos 1 foto' });
   }
+  issues.push(...photoIssues('mercadolivre', product, 'o Mercado Livre'));
   if (product.title.length > 60) {
     issues.push({ field: 'title', severity: 'warn', message: 'titulo sera cortado em 60 caracteres' });
   }
   if (product.priceCents <= 0) {
     issues.push({ field: 'priceCents', severity: 'error', message: 'preco precisa ser maior que zero' });
   }
-  if (/^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl)) {
+  if (isLocalUrl(config.publicUrl)) {
     issues.push({
       field: 'images', severity: 'warn',
       message: 'PUBLIC_URL aponta para localhost: o Mercado Livre nao conseguira baixar as fotos. Use um tunel (ngrok/cloudflared).',

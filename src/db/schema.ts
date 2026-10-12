@@ -25,9 +25,28 @@ CREATE TABLE IF NOT EXISTS images (
   mime       TEXT NOT NULL,
   bytes      INTEGER NOT NULL DEFAULT 0,
   position   INTEGER NOT NULL DEFAULT 0,
+  width      INTEGER NOT NULL DEFAULT 0,
+  height     INTEGER NOT NULL DEFAULT 0,
+  -- de onde a foto veio. Só 'upload' (foto sua) pode ser capa do anúncio.
+  origin     TEXT NOT NULL DEFAULT 'upload'
+             CHECK (origin IN ('upload','catalogo','url','ia')),
+  source_url    TEXT NOT NULL DEFAULT '',
+  source_label  TEXT NOT NULL DEFAULT '',
+  -- arquivo original intacto em uploads/originals, para refazer ou desfazer tratamento.
+  original_filename TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_images_product ON images(product_id, position);
+
+-- Link temporario para enviar fotos pelo celular (QR Code do painel).
+-- E o unico jeito de o celular postar foto sem passar pelo basic auth.
+CREATE TABLE IF NOT EXISTS upload_tokens (
+  token      TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_upload_tokens_product ON upload_tokens(product_id);
 
 CREATE TABLE IF NOT EXISTS channel_accounts (
   channel        TEXT PRIMARY KEY,
@@ -67,3 +86,22 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);
 `;
+
+/**
+ * Colunas adicionadas depois do banco ja existir. `CREATE TABLE IF NOT EXISTS`
+ * nao altera tabela criada: cada entrada aqui e aplicada com ALTER TABLE se faltar.
+ * A lista e append-only — nunca edite uma entrada ja publicada.
+ */
+export const COLUMN_MIGRATIONS: ReadonlyArray<{ table: string; column: string; ddl: string }> = [
+  { table: 'images', column: 'width', ddl: 'ALTER TABLE images ADD COLUMN width INTEGER NOT NULL DEFAULT 0' },
+  { table: 'images', column: 'height', ddl: 'ALTER TABLE images ADD COLUMN height INTEGER NOT NULL DEFAULT 0' },
+  // Sem CHECK: o SQLite nao aceita CHECK em ADD COLUMN; quem valida e o zod/servico.
+  { table: 'images', column: 'origin', ddl: "ALTER TABLE images ADD COLUMN origin TEXT NOT NULL DEFAULT 'upload'" },
+  { table: 'images', column: 'source_url', ddl: "ALTER TABLE images ADD COLUMN source_url TEXT NOT NULL DEFAULT ''" },
+  { table: 'images', column: 'source_label', ddl: "ALTER TABLE images ADD COLUMN source_label TEXT NOT NULL DEFAULT ''" },
+  {
+    table: 'images',
+    column: 'original_filename',
+    ddl: "ALTER TABLE images ADD COLUMN original_filename TEXT NOT NULL DEFAULT ''",
+  },
+];

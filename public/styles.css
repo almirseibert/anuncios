@@ -108,7 +108,34 @@ legend { font-size: .8rem; color: var(--muted); padding: 0 .3rem; }
 .gallery { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); }
 .gallery figure { margin: 0; position: relative; }
 .gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
-.gallery button { position: absolute; top: .25rem; right: .25rem; padding: .1rem .4rem; font-size: .75rem; }
+.gallery figcaption { font-size: .72rem; text-align: center; margin-top: .15rem; }
+
+/* Quadro de foto: miniatura + selos + acoes. Na galeria, arrastavel para reordenar. */
+.shot { margin: 0; position: relative; cursor: grab; }
+.shot img {
+  width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line);
+}
+.shot.dragging { opacity: .4; }
+.shot-acts { position: absolute; top: .25rem; right: .25rem; display: flex; gap: .2rem; }
+.shot-acts button { padding: .1rem .35rem; font-size: .8rem; line-height: 1.2; }
+.shot-tags { position: absolute; top: .25rem; left: .25rem; display: flex; gap: .2rem; flex-wrap: wrap; max-width: 70%; }
+.tag {
+  font-size: .65rem; padding: .05rem .3rem; border-radius: 4px; background: var(--line); color: var(--fg);
+  border: 1px solid var(--line);
+}
+.tag.capa { background: #0a63c9; border-color: #0a63c9; color: #fff; }
+.tag.catalogo { background: #8a5a00; border-color: #8a5a00; color: #fff; }
+.tag.ia { background: #5b2fb3; border-color: #5b2fb3; color: #fff; }
+
+/* Paineis de catalogo / QR / IA, abaixo da galeria. */
+.painel { border: 1px solid var(--line); border-radius: 8px; padding: .8rem; margin: .6rem 0; }
+.painel .gallery { grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr)); }
+.painel-par { display: flex; gap: .8rem; align-items: flex-start; flex-wrap: wrap; }
+.painel-par .shot { width: 11rem; flex: 0 0 auto; cursor: default; }
+.painel.qr { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.painel.qr svg { width: 11rem; height: 11rem; background: #fff; border-radius: 8px; padding: .3rem; }
+.painel label { position: relative; display: block; }
+.painel .refbox { position: absolute; top: .35rem; left: .35rem; z-index: 1; width: 1.1rem; height: 1.1rem; }
 
 .channel-row {
   display: flex; gap: .6rem; align-items: center; padding: .55rem 0; border-top: 1px solid var(--line);

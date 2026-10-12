@@ -1,6 +1,7 @@
 import { config } from '../../config.ts';
 import { request } from '../../lib/http.ts';
 import { buildDescription } from '../../services/templates.ts';
+import { photoIssues } from '../../services/images.ts';
 import type { Product } from '../../domain/product.ts';
 import type { Channel, PublishContext, PublishResult, ValidationIssue } from '../types.ts';
 
@@ -36,6 +37,7 @@ function validate(product: Product): ValidationIssue[] {
   if (product.images.length === 0) {
     issues.push({ field: 'images', severity: 'error', message: 'o catalogo da Meta exige image_url' });
   }
+  issues.push(...photoIssues('facebook', product, 'o catalogo da Meta'));
   if (!config.channels.facebook.catalogId || !config.channels.facebook.accessToken) {
     issues.push({
       severity: 'error',

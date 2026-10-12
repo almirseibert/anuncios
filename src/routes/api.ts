@@ -1,11 +1,8 @@
-import { randomUUID } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
 import { unlink } from 'node:fs/promises';
-import { pipeline } from 'node:stream/promises';
-import { extname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { config } from '../config.ts';
+import { config, isLocalUrl } from '../config.ts';
 import { productInput } from '../domain/product.ts';
 import { channelStatus, getChannel } from '../channels/registry.ts';
 import { ChannelError } from '../channels/types.ts';
@@ -17,8 +14,22 @@ import {
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
+import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
+import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
+import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
+import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
+import { authEnabled } from '../lib/auth.ts';
+import { toString as qrToString } from 'qrcode';
 
-const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const referenceBody = z.object({
+  images: z.array(z.object({
+    url: z.string().url(),
+    label: z.string().max(200).optional(),
+    sourceUrl: z.string().url().optional(),
+  })).min(1).max(10),
+});
+
+const fromUrlBody = z.object({ url: z.string().url() });
 
 const draftBody = z.object({
   kind: z.enum(['geral', 'veiculo', 'imovel']),
@@ -35,6 +46,19 @@ const publishBody = z.object({
 });
 
 /** Garante que o caminho resolvido continua dentro de uploadsDir. */
+/** Baixa a primeira URL que responder imagem; se nenhuma responder, propaga o ultimo erro. */
+async function firstAvailable(urls: string[]) {
+  let last: unknown;
+  for (const url of urls) {
+    try {
+      return await fetchRemoteImage(url);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
+}
+
 function uploadPath(filename: string) {
   const full = resolve(config.uploadsDir, filename);
   if (!full.startsWith(resolve(config.uploadsDir))) throw new ChannelError('caminho de arquivo invalido');
@@ -45,9 +69,11 @@ export async function registerApiRoutes(app: FastifyInstance) {
   app.get('/health', async () => ({ ok: true, dryRun: config.dryRun, publicUrl: config.publicUrl }));
 
   app.get('/config', async () => ({
+    version: config.version,
     dryRun: config.dryRun,
+    authEnabled: authEnabled(),
     publicUrl: config.publicUrl,
-    publicUrlIsLocal: /^https?:\/\/(127\.0\.0\.1|localhost)/.test(config.publicUrl),
+    publicUrlIsLocal: isLocalUrl(config.publicUrl),
     seller: config.seller,
     aiConfigured: aiConfigured(),
     aiModel: config.gemini.model,
@@ -129,7 +155,12 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const product = getProduct(id);
     if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
     deleteProduct(id);
-    await Promise.allSettled(product.images.map((i) => unlink(uploadPath(i.filename))));
+    await Promise.allSettled([
+      ...product.images.map((i) => unlink(uploadPath(i.filename))),
+      ...product.images
+        .filter((i) => i.originalFilename)
+        .map((i) => unlink(join(originalsDir, i.originalFilename))),
+    ]);
     return { ok: true };
   });
 
@@ -142,19 +173,16 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const saved: string[] = [];
     for await (const part of req.parts()) {
       if (part.type !== 'file') continue;
-      if (!ALLOWED_IMAGE_MIME.has(part.mimetype)) {
-        return reply.status(400).send({ error: `tipo nao aceito: ${part.mimetype} (use jpeg, png ou webp)` });
+      if (!ACCEPTED_MIME.has(part.mimetype)) {
+        return reply.status(400).send({
+          error: `tipo nao aceito: ${part.mimetype} (use jpeg, png, webp ou heic)`,
+        });
       }
-      const ext = extname(part.filename || '').toLowerCase() || `.${part.mimetype.split('/')[1]}`;
-      const filename = `${id}-${randomUUID()}${ext}`;
-      const target = join(config.uploadsDir, filename);
-      await pipeline(part.file, createWriteStream(target));
-      if (part.file.truncated) {
-        await unlink(target).catch(() => {});
-        return reply.status(413).send({ error: 'imagem maior que 15 MB' });
-      }
-      addImage(id, filename, part.mimetype, part.file.bytesRead);
-      saved.push(filename);
+      const buf = await part.toBuffer();
+      if (part.file.truncated) return reply.status(413).send({ error: 'imagem maior que 15 MB' });
+      const processed = await processUpload(buf, { productId: id });
+      addImage(id, { ...processed, origin: 'upload' });
+      saved.push(processed.filename);
     }
     if (saved.length === 0) return reply.status(400).send({ error: 'nenhuma imagem recebida' });
     return reply.status(201).send({ product: getProduct(id) });
@@ -166,7 +194,88 @@ export async function registerApiRoutes(app: FastifyInstance) {
     if (!image) return reply.status(404).send({ error: 'imagem nao encontrada' });
     removeImage(imageId);
     await unlink(uploadPath(image.filename)).catch(() => {});
+    if (image.original_filename) {
+      await unlink(join(originalsDir, image.original_filename)).catch(() => {});
+    }
     return { ok: true };
+  });
+
+  /**
+   * Fotos oficiais do catalogo do Mercado Livre para o titulo do produto.
+   * Nao grava nada: devolve candidatas para voce aprovar.
+   */
+  app.get('/products/:id/reference-images', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const product = getProduct(id);
+    if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
+    if (product.kind !== 'geral') {
+      return reply.send({
+        candidates: [],
+        message: 'o catalogo do Mercado Livre cobre produtos de linha. Veiculo e imovel sao unicos: use suas proprias fotos.',
+      });
+    }
+    const candidates = await findCatalogImages(product.title);
+    return {
+      candidates,
+      message: candidates.length ? undefined : 'nenhum produto parecido no catalogo. Tente um titulo com marca e modelo.',
+    };
+  });
+
+  /** Grava as candidatas que voce aprovou, como foto ilustrativa (nunca capa). */
+  app.post('/products/:id/reference-images', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+    const parsed = referenceBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+
+    for (const item of parsed.data.images) {
+      // Tenta a variante de maior resolucao e cai para a URL que a API deu.
+      const buf = await firstAvailable(urlVariants(item.url));
+      const processed = await processUpload(buf, { productId: id });
+      addImage(id, {
+        ...processed,
+        origin: 'catalogo',
+        sourceUrl: item.sourceUrl ?? item.url,
+        sourceLabel: item.label ?? '',
+      });
+    }
+    logEvent('info', `${parsed.data.images.length} foto(s) de catalogo adicionadas`, { productId: id });
+    return reply.status(201).send({ product: getProduct(id) });
+  });
+
+  /** Importa uma foto de um link que voce colou (Drive, Fotos, anuncio antigo). */
+  app.post('/products/:id/images/from-url', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+    const parsed = fromUrlBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'informe uma URL de imagem valida' });
+
+    const buf = await fetchRemoteImage(parsed.data.url);
+    const processed = await processUpload(buf, { productId: id });
+    addImage(id, { ...processed, origin: 'url', sourceUrl: parsed.data.url });
+    return reply.status(201).send({ product: getProduct(id) });
+  });
+
+  /**
+   * QR Code para enviar fotos pelo celular. Devolve o SVG pronto e o link,
+   * que vale 2 horas. O link e isento de senha: quem autoriza e o token.
+   */
+  app.get('/products/:id/upload-qr', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+
+    const { token, expiresAt } = issueUploadToken(id);
+    const url = uploadLink(token);
+    const svg = await qrToString(url, { type: 'svg', margin: 1, width: 240 });
+    const local = isLocalUrl(config.publicUrl);
+    return {
+      url,
+      expiresAt,
+      svg,
+      warning: local
+        ? 'PUBLIC_URL aponta para localhost: o celular nao vai abrir este link. Use o endereco publico do servidor.'
+        : undefined,
+    };
   });
 
   app.put('/products/:id/images/order', async (req) => {
@@ -209,7 +318,30 @@ export async function registerApiRoutes(app: FastifyInstance) {
 
   // ---- geracao de texto (Gemini) ----
 
-  app.get('/ai/status', async () => ({ configured: aiConfigured(), model: config.gemini.model }));
+  app.get('/ai/status', async () => ({
+    configured: aiConfigured(),
+    model: config.gemini.model,
+    image: {
+      configured: imageAiConfigured(),
+      model: config.gemini.imageModel,
+      modes: Object.entries(ENHANCE_MODES).map(([id, m]) => ({ id, label: m.label })),
+    },
+  }));
+
+  /**
+   * Gera uma versao tratada de uma foto sua. Nao sobrescreve nada: a versao
+   * entra como imagem nova, e desfazer e apaga-la.
+   */
+  app.post('/images/:imageId/enhance', async (req, reply) => {
+    const { imageId } = req.params as { imageId: string };
+    const { mode } = (req.body ?? {}) as { mode?: string };
+    if (!mode || !(mode in ENHANCE_MODES)) {
+      return reply.status(400).send({ error: `modo invalido. Use: ${Object.keys(ENHANCE_MODES).join(', ')}` });
+    }
+    const out = await enhanceImage(imageId, mode as EnhanceMode);
+    logEvent('info', `foto tratada com IA (${mode})`, { productId: out.product.id });
+    return reply.status(201).send(out);
+  });
 
   /** Escreve um anuncio novo a partir do nome do produto e do contexto livre. */
   app.post('/ai/draft', async (req, reply) => {

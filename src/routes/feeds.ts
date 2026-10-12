@@ -5,8 +5,13 @@ import { buildOlxFeed } from '../channels/olx/feed.ts';
 import { listProducts } from '../services/products.ts';
 import { allListings } from '../services/publish.ts';
 
+/**
+ * O feed e isento do basic auth (a OLX le sem credencial), entao o token e a
+ * unica protecao dele. Sem token configurado so liberamos quando o painel
+ * tambem esta sem senha, isto e, uso local -- nunca num app exposto.
+ */
 function tokenOk(given: string | undefined) {
-  if (!config.olxFeedToken) return true; // sem token configurado o feed fica aberto
+  if (!config.olxFeedToken) return !config.admin.pass;
   if (!given) return false;
   const a = Buffer.from(given);
   const b = Buffer.from(config.olxFeedToken);
