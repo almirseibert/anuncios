@@ -79,8 +79,15 @@ $('#lista').addEventListener('click', async (ev) => {
   if (btn.dataset.act === 'editar') openForm(product);
   if (btn.dataset.act === 'publicar') openDetail(product.id);
   if (btn.dataset.act === 'excluir') {
-    if (!confirm(`Excluir "${product.title}" e suas fotos? Os anúncios já publicados nas plataformas NÃO são removidos.`)) return;
-    await api(`/products/${product.id}`, { method: 'DELETE' });
+    const ml = product.listings.find((l) => l.channel === 'mercadolivre' && l.externalId && l.status !== 'encerrado');
+    if (!confirm(`Excluir "${product.title}" e suas fotos?${ml
+      ? `\n\nO anúncio ${ml.externalId} será ENCERRADO no Mercado Livre.` : ''}`)) return;
+    try {
+      await api(`/products/${product.id}`, { method: 'DELETE' });
+    } catch (err) {
+      if (!confirm(`${err.message}\n\nExcluir daqui mesmo assim? O anúncio continua no ar no Mercado Livre.`)) return;
+      await api(`/products/${product.id}?manterAnuncio=1`, { method: 'DELETE' });
+    }
     loadProducts();
   }
 });
@@ -116,7 +123,8 @@ $('#importar-ml').addEventListener('click', async (ev) => {
     const r = await api('/mercadolivre/import', { method: 'POST', body: '{}' });
     const linhas = [
       `<strong>${r.importados.length}</strong> anúncio(s) importado(s) de ${r.encontrados} encontrado(s)`
-        + (r.jaImportados ? ` · ${r.jaImportados} já estava(m) aqui` : ''),
+        + (r.jaImportados ? ` · ${r.jaImportados} já estava(m) aqui` : '')
+        + (r.excluidos ? ` · ${r.excluidos} de produto(s) que você excluiu ficaram de fora` : ''),
       ...r.importados.filter((i) => i.fotosFalharam).map((i) =>
         `${esc(i.title)}: ${i.fotosFalharam} foto(s) não baixaram — envie de novo`),
       ...r.pulados.map((p) => `Não importado: ${esc(p.title || p.externalId)} — ${esc(p.motivo)}`),

@@ -12,7 +12,9 @@ import {
   addImage, archiveProduct, createProduct, deleteProduct, getImage, getProduct,
   listProducts, removeImage, reorderImages, setChannelAttrs, updateProduct,
 } from '../services/products.ts';
-import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
+import {
+  allListings, changeListingStatus, closeListingsBeforeDelete, listingsFor, publishToChannels,
+} from '../services/publish.ts';
 import { importFromMercadoLivre } from '../services/mlImport.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
 import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
@@ -176,14 +178,27 @@ export async function registerApiRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const product = getProduct(id);
     if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
+    // Excluir aqui encerra o anuncio no ML. Se nao der para encerrar, so exclui
+    // com ?manterAnuncio=1 (o painel pergunta antes): o anuncio ficaria no ar.
+    const manter = (req.query as { manterAnuncio?: string }).manterAnuncio === '1';
+    const { encerrados, falhas } = await closeListingsBeforeDelete(id, { keepOnPlatform: manter });
+    if (falhas.length) {
+      return reply.status(409).send({
+        error: `nao consegui encerrar ${falhas.map((f) => `${f.externalId} (${f.error})`).join('; ')}`,
+        falhas,
+      });
+    }
     deleteProduct(id);
+    logEvent('info', `produto excluido${encerrados.length ? `; anuncio(s) encerrado(s): ${encerrados.join(', ')}` : ''}`, {
+      productId: id,
+    });
     await Promise.allSettled([
       ...product.images.map((i) => unlink(uploadPath(i.filename))),
       ...product.images
         .filter((i) => i.originalFilename)
         .map((i) => unlink(join(originalsDir, i.originalFilename))),
     ]);
-    return { ok: true };
+    return { ok: true, encerrados };
   });
 
   // ---- imagens ----

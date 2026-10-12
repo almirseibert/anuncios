@@ -97,11 +97,15 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   });
 }) as typeof fetch;
 
+const porStatusExtra = { closed: [] as string[] };
+
 beforeEach(() => {
   chamadas = [];
   saveAccount({ channel: 'mercadolivre', label: 'V', accessToken: 'T', refreshToken: 'R',
     expiresAt: new Date(Date.now() + 3_600_000).toISOString(), meta: { userId: 42 } });
-  const porStatus: Record<string, string[]> = { active: ['MLB333'], paused: ['MLB111'], closed: ['MLB222'] };
+  const porStatus: Record<string, string[]> = {
+    active: ['MLB333'], paused: ['MLB111'], closed: ['MLB222', ...porStatusExtra.closed],
+  };
   const itens: Record<string, unknown> = { MLB111: ps4, MLB222: fogao, MLB333: carro };
   rotas = {
     'GET /users/42/items/search': (u) => {
@@ -202,4 +206,53 @@ test('encerrado volta pelo relist e a atualizacao segue no numero novo', async (
   const relist = chamadas.find((c) => c.url.pathname === '/items/MLB222/relist')!;
   assert.deepEqual(relist.body, { price: 1500, quantity: 1, listing_type_id: 'gold_special' });
   assert.equal(getListing(p.id, 'mercadolivre')!.externalId, 'MLB999');
+});
+
+// ---- excluir aqui encerra no ML ----
+
+const { closeListingsBeforeDelete, wasRemoved } = await import('../src/services/publish.ts');
+const { deleteProduct } = await import('../src/services/products.ts');
+
+test('excluir encerra o anuncio no ML e a importacao nao o traz de volta', async () => {
+  const p = importado('MLB111');
+  const externalId = getListing(p.id, 'mercadolivre')!.externalId!;
+  rotas[`PUT /items/${externalId}`] = (_u, body) => ({ status: 200, body: { id: externalId, status: body.status } });
+
+  const r = await closeListingsBeforeDelete(p.id);
+  deleteProduct(p.id);
+
+  assert.deepEqual(r, { encerrados: [externalId], falhas: [] });
+  const put = chamadas.find((c) => c.method === 'PUT' && c.url.pathname === `/items/${externalId}`)!;
+  assert.deepEqual(put.body, { status: 'closed' }, 'tem de encerrar de verdade, mesmo com DRY_RUN padrao');
+  assert.equal(wasRemoved('mercadolivre', externalId), true);
+
+  // o ML ainda lista o anuncio (agora encerrado), mas ele nao volta
+  porStatusExtra.closed.push(externalId);
+  rotas['GET /items'] = (u) => ({ status: 200, body: u.searchParams.get('ids')!.split(',').map((id) => ({ code: 200, body: { ...ps4, id, status: 'closed' } })) });
+  const rel = await importFromMercadoLivre();
+  assert.equal(rel.importados.some((i) => i.externalId === externalId), false);
+  assert.ok(rel.excluidos >= 1);
+});
+
+test('se o ML nao encerrar, o produto nao e apagado em silencio', async () => {
+  const p = importado('MLB222') ?? importado('MLB999');
+  const externalId = getListing(p.id, 'mercadolivre')!.externalId!;
+  // garante um listing "no ar" para tentar encerrar
+  const { linkListing } = await import('../src/services/publish.ts');
+  linkListing(p.id, 'mercadolivre', { status: 'publicado', externalId });
+  rotas[`PUT /items/${externalId}`] = () => ({ status: 500, body: { message: 'ML fora do ar' } });
+
+  const r = await closeListingsBeforeDelete(p.id);
+
+  assert.equal(r.falhas.length, 1);
+  assert.match(r.falhas[0]!.error, /ML fora do ar/);
+  assert.equal(wasRemoved('mercadolivre', externalId), false, 'so marca como removido quando encerrou');
+  assert.ok(getProduct(p.id), 'o produto continua aqui');
+
+  // excluir mantendo o anuncio no ar: nao chama o ML, mas marca para nao reimportar
+  chamadas = [];
+  const manter = await closeListingsBeforeDelete(p.id, { keepOnPlatform: true });
+  assert.deepEqual(manter, { encerrados: [], falhas: [] });
+  assert.equal(chamadas.length, 0);
+  assert.equal(wasRemoved('mercadolivre', externalId), true);
 });

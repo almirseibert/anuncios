@@ -47,7 +47,7 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | Atualizar anúncio existente no ML | **feito** — produto com anúncio publica com `PUT /items/:id` (mesmo anúncio); pausado é reativado; encerrado volta por `relist` (número novo) |
 | Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **87 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **89 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -94,6 +94,8 @@ Decidido com o dono (out/2026): **editar o mesmo anúncio**, não criar outro �
 
 - **Importar** (`src/channels/mercadolivre/importer.ts` + `src/services/mlImport.ts`): `/users/:id/items/search` com `status=active|paused|closed`, `/items?ids=` (20 por vez) e `/items/:id/description`. Cada item vira produto; marca, modelo, código de barras e garantia vão para o cadastro; o resto dos atributos (VOLTAGE...) vai para "Atributos do Mercado Livre"; as fotos passam por `processUpload` e entram como foto sua (`url`). Rodar de novo só traz os novos. **Veículo e imóvel ficam de fora** (cadastro próprio, mais campos).
 - **Atualizar** (`src/channels/mercadolivre/update.ts`): quando o produto já tem anúncio, Publicar faz `PUT /items/:id` (preço, quantidade, fotos, atributos, garantia e, **só sem vendas e fora do modelo de produto**, o título) e `PUT /items/:id/description`. Se o ML recusar título/atributos, tenta de novo só com preço, quantidade e fotos, e avisa. Pausado → `status: active`. Encerrado → `POST /items/:id/relist` (o ML não edita encerrado; volta com **número novo**). Se o relist for recusado, cria anúncio novo e diz.
+- **Excluir aqui encerra o anúncio no ML** (decisão do dono, out/2026): `closeListingsBeforeDelete` em `src/services/publish.ts` faz `PUT status: closed` e anota o número em `removed_listings`, para a importação não trazê-lo de volta (ela traz encerrados). Se o ML não encerrar, o produto **não** é apagado; o painel pergunta se exclui mesmo assim (`?manterAnuncio=1`, o anúncio fica no ar).
+- Pausar/encerrar pelo painel é sempre de verdade, como publicar (não segue mais `DRY_RUN`).
 - Não verificado contra o ML real: formato exato da resposta de `/users/:id/items/search` por status e do `relist`.
 
 ## 5. Pendências e pontos não verificados

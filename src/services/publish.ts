@@ -201,7 +201,8 @@ export async function changeListingStatus(productId: string, channelId: string, 
 
   const result = await fn({
     product,
-    dryRun: config.dryRun,
+    // o painel nao simula mais (pedido do dono): pausar/encerrar vale de verdade
+    dryRun: false,
     account: getAccount(channelId),
     externalId: listing.externalId,
   });
@@ -211,4 +212,37 @@ export async function changeListingStatus(productId: string, channelId: string, 
   });
   logEvent('info', `status alterado para ${result.status}`, { productId, channel: channelId });
   return { channel: channelId, status: result.status, manual: false };
+}
+
+/** O anuncio foi de um produto excluido aqui: a importacao nao o traz de volta. */
+export function wasRemoved(channel: string, externalId: string) {
+  return Boolean(get('SELECT 1 AS x FROM removed_listings WHERE channel = ? AND external_id = ?', channel, externalId));
+}
+
+/**
+ * Antes de excluir um produto: encerra os anuncios dele nas plataformas com
+ * API e anota o numero de cada um, para a importacao nao os trazer de volta.
+ *
+ * Devolve as falhas. Com falha, quem chama NAO deve excluir sem confirmacao:
+ * o anuncio continuaria no ar sem nada aqui apontando para ele.
+ */
+export async function closeListingsBeforeDelete(productId: string, opts: { keepOnPlatform?: boolean } = {}) {
+  const encerrados: string[] = [];
+  const falhas: Array<{ channel: string; externalId: string; error: string }> = [];
+  for (const l of listingsFor(productId)) {
+    if (!l.externalId) continue;
+    const channel = getChannel(l.channel);
+    if (!opts.keepOnPlatform && channel?.close && l.status !== 'encerrado') {
+      try {
+        await changeListingStatus(productId, l.channel, 'close');
+        encerrados.push(l.externalId);
+      } catch (err) {
+        falhas.push({ channel: l.channel, externalId: l.externalId, error: (err as Error).message });
+        continue;
+      }
+    }
+    run('INSERT OR REPLACE INTO removed_listings (channel, external_id, removed_at) VALUES (?,?,?)',
+      l.channel, l.externalId, nowIso());
+  }
+  return { encerrados, falhas };
 }

@@ -88,6 +88,15 @@ CREATE TABLE IF NOT EXISTS events (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_created ON events(created_at DESC);
+
+-- Anuncios de produtos excluidos aqui: a importacao do ML nao os traz de volta
+-- (ela importa encerrados tambem, e excluir encerra o anuncio).
+CREATE TABLE IF NOT EXISTS removed_listings (
+  channel     TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  removed_at  TEXT NOT NULL,
+  PRIMARY KEY (channel, external_id)
+);
 `;
 
 /**

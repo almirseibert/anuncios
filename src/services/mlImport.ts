@@ -2,13 +2,15 @@ import { draftFromItem, fetchItemsWithDescription, listSellerItemIds } from '../
 import { logEvent } from './events.ts';
 import { fetchFirstImage, processUpload } from './images.ts';
 import { addImage, createProduct, setChannelAttrs } from './products.ts';
-import { findListingByExternalId, linkListing } from './publish.ts';
+import { findListingByExternalId, linkListing, wasRemoved } from './publish.ts';
 
 export interface ImportReport {
   /** Anuncios encontrados na conta (ativos, pausados, encerrados). */
   encontrados: number;
   importados: Array<{ productId: string; externalId: string; title: string; fotos: number; fotosFalharam: number }>;
   jaImportados: number;
+  /** Anuncios de produtos que voce excluiu aqui: ficam de fora. */
+  excluidos: number;
   pulados: Array<{ externalId: string; title: string; motivo: string }>;
 }
 
@@ -22,8 +24,15 @@ export interface ImportReport {
  */
 export async function importFromMercadoLivre(): Promise<ImportReport> {
   const ids = await listSellerItemIds();
-  const novos = ids.filter((id) => !findListingByExternalId('mercadolivre', id));
-  const report: ImportReport = { encontrados: ids.length, importados: [], jaImportados: ids.length - novos.length, pulados: [] };
+  const excluidos = ids.filter((id) => wasRemoved('mercadolivre', id));
+  const novos = ids.filter((id) => !excluidos.includes(id) && !findListingByExternalId('mercadolivre', id));
+  const report: ImportReport = {
+    encontrados: ids.length,
+    importados: [],
+    jaImportados: ids.length - novos.length - excluidos.length,
+    excluidos: excluidos.length,
+    pulados: [],
+  };
 
   for (const { item, descricao } of await fetchItemsWithDescription(novos)) {
     const draft = draftFromItem(item, descricao);
