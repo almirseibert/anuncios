@@ -78,49 +78,102 @@ ${p.images[0] ? `<meta property="og:image" content="${esc(p.images[0].url)}">` :
   :root { color-scheme: light dark; }
   body { font:17px/1.5 system-ui,sans-serif; margin:0; padding:1.25rem; }
   h1 { font-size:1.15rem; margin:0 0 1rem; }
-  label { display:block; border:2px dashed currentColor; border-radius:.75rem; padding:1.5rem 1rem;
-          text-align:center; opacity:.85; }
-  input[type=file] { display:block; margin:.75rem auto 0; }
-  button { width:100%; padding:.9rem; font-size:1.05rem; border-radius:.6rem; margin-top:1rem;
-           border:0; background:#0a63c9; color:#fff; }
-  button[disabled] { opacity:.5; }
+  button { width:100%; padding:.95rem; font-size:1.05rem; border-radius:.6rem; margin-top:.6rem;
+           border:2px solid #0a63c9; background:transparent; color:#0a63c9; }
+  button.primary { border-color:#0a63c9; background:#0a63c9; color:#fff; margin-top:1rem; }
+  button[disabled] { opacity:.45; }
+  h2 { font-size:.9rem; font-weight:600; opacity:.7; margin:1.4rem 0 .4rem; }
   #log { margin-top:1rem; }
-  .thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-top:1rem; }
+  .thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; margin-top:.4rem; }
+  .thumbs figure { margin:0; position:relative; }
   .thumbs img { width:100%; aspect-ratio:1; object-fit:cover; border-radius:.4rem; }
+  .thumbs button { position:absolute; top:.15rem; right:.15rem; width:auto; margin:0; padding:.05rem .4rem;
+                   font-size:.9rem; border-radius:.3rem; background:rgba(0,0,0,.6); color:#fff; border:0; }
 </style>
 <h1>${esc(product.title)}</h1>
-<form id="f">
-  <label>Tirar foto ou escolher da galeria
-    <input type="file" id="files" accept="image/*" capture="environment" multiple required>
-  </label>
-  <button type="submit">Enviar fotos</button>
-</form>
+
+<!--
+  Dois caminhos, e por isso dois inputs: 'capture' manda o celular abrir a camera
+  direto, sem passar pelo seletor de arquivos. Um input so com capture (como era
+  antes) deixa as fotos que ja estao no telefone inalcancaveis; um input so sem
+  capture perde o atalho de fotografar na hora.
+-->
+<input type="file" id="cam" accept="image/*" capture="environment" multiple hidden>
+<input type="file" id="gal" accept="image/*" multiple hidden>
+
+<button type="button" id="b-cam">📷 Fotografar agora</button>
+<button type="button" id="b-gal">🖼️ Escolher da galeria</button>
+
+<h2 id="fila-titulo" hidden>Para enviar</h2>
+<div class="thumbs" id="fila"></div>
+
+<button type="button" id="enviar" class="primary" disabled>Enviar fotos</button>
 <div id="log"></div>
-<div class="thumbs" id="thumbs">${product.images.map((i) => `<img src="${esc(i.url)}" alt="">`).join('')}</div>
+
+<h2 id="ja-titulo"${product.images.length ? '' : ' hidden'}>Já no anúncio</h2>
+<div class="thumbs" id="thumbs">${product.images.map((i) => `<figure><img src="${esc(i.url)}" alt=""></figure>`).join('')}</div>
 <script>
-const form = document.getElementById('f');
 const log = document.getElementById('log');
-form.addEventListener('submit', async (ev) => {
-  ev.preventDefault();
-  const input = document.getElementById('files');
-  if (!input.files.length) return;
+const enviar = document.getElementById('enviar');
+const fila = document.getElementById('fila');
+const filaTitulo = document.getElementById('fila-titulo');
+
+// Cada input guarda so a ultima selecao, entao a fila vive aqui: assim
+// fotografar agora nao apaga o que veio da galeria, e vice-versa.
+const pendentes = [];
+
+function desenharFila() {
+  fila.innerHTML = pendentes.map((p, i) =>
+    '<figure><img src="' + p.preview + '" alt=""><button type="button" data-i="' + i + '">✕</button></figure>'
+  ).join('');
+  filaTitulo.hidden = pendentes.length === 0;
+  enviar.disabled = pendentes.length === 0;
+  enviar.textContent = pendentes.length
+    ? 'Enviar ' + pendentes.length + ' foto(s)'
+    : 'Enviar fotos';
+}
+
+function adicionar(input) {
+  for (const file of input.files) {
+    pendentes.push({ file: file, preview: URL.createObjectURL(file) });
+  }
+  input.value = ''; // permite escolher o mesmo arquivo de novo
+  desenharFila();
+}
+
+document.getElementById('b-cam').addEventListener('click', () => document.getElementById('cam').click());
+document.getElementById('b-gal').addEventListener('click', () => document.getElementById('gal').click());
+document.getElementById('cam').addEventListener('change', (ev) => adicionar(ev.target));
+document.getElementById('gal').addEventListener('change', (ev) => adicionar(ev.target));
+
+fila.addEventListener('click', (ev) => {
+  const alvo = ev.target.closest('button[data-i]');
+  if (!alvo) return;
+  const [removido] = pendentes.splice(Number(alvo.dataset.i), 1);
+  URL.revokeObjectURL(removido.preview);
+  desenharFila();
+});
+
+enviar.addEventListener('click', async () => {
+  if (!pendentes.length) return;
   const fd = new FormData();
-  for (const f of input.files) fd.append('images', f);
-  const btn = form.querySelector('button');
-  btn.disabled = true;
-  log.textContent = 'Enviando ' + input.files.length + ' foto(s)...';
+  for (const p of pendentes) fd.append('images', p.file);
+  enviar.disabled = true;
+  log.textContent = 'Enviando ' + pendentes.length + ' foto(s)...';
   try {
     const res = await fetch(location.pathname + '/images', { method: 'POST', body: fd });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'falha no envio');
-    log.textContent = 'Pronto. ' + data.product.images.length + ' foto(s) no anuncio.';
+    log.textContent = 'Pronto. ' + data.product.images.length + ' foto(s) no anúncio.';
+    document.getElementById('ja-titulo').hidden = false;
     document.getElementById('thumbs').innerHTML =
-      data.product.images.map((i) => '<img src="' + i.url + '" alt="">').join('');
-    input.value = '';
+      data.product.images.map((i) => '<figure><img src="' + i.url + '" alt=""></figure>').join('');
+    for (const p of pendentes) URL.revokeObjectURL(p.preview);
+    pendentes.length = 0;
+    desenharFila();
   } catch (err) {
     log.textContent = 'Erro: ' + err.message;
-  } finally {
-    btn.disabled = false;
+    enviar.disabled = false;
   }
 });
 </script>`);
