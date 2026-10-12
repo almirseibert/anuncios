@@ -14,6 +14,7 @@ import {
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
+import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
 import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
 import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
 import { issueUploadToken, uploadLink } from '../services/uploadTokens.ts';
@@ -314,7 +315,30 @@ export async function registerApiRoutes(app: FastifyInstance) {
 
   // ---- geracao de texto (Gemini) ----
 
-  app.get('/ai/status', async () => ({ configured: aiConfigured(), model: config.gemini.model }));
+  app.get('/ai/status', async () => ({
+    configured: aiConfigured(),
+    model: config.gemini.model,
+    image: {
+      configured: imageAiConfigured(),
+      model: config.gemini.imageModel,
+      modes: Object.entries(ENHANCE_MODES).map(([id, m]) => ({ id, label: m.label })),
+    },
+  }));
+
+  /**
+   * Gera uma versao tratada de uma foto sua. Nao sobrescreve nada: a versao
+   * entra como imagem nova, e desfazer e apaga-la.
+   */
+  app.post('/images/:imageId/enhance', async (req, reply) => {
+    const { imageId } = req.params as { imageId: string };
+    const { mode } = (req.body ?? {}) as { mode?: string };
+    if (!mode || !(mode in ENHANCE_MODES)) {
+      return reply.status(400).send({ error: `modo invalido. Use: ${Object.keys(ENHANCE_MODES).join(', ')}` });
+    }
+    const out = await enhanceImage(imageId, mode as EnhanceMode);
+    logEvent('info', `foto tratada com IA (${mode})`, { productId: out.product.id });
+    return reply.status(201).send(out);
+  });
 
   /** Escreve um anuncio novo a partir do nome do produto e do contexto livre. */
   app.post('/ai/draft', async (req, reply) => {

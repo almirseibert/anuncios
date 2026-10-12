@@ -3,7 +3,7 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-const state = { products: [], channels: [], config: null, editing: null };
+const state = { products: [], channels: [], config: null, editing: null, ai: null };
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const money = (cents) => BRL.format((cents ?? 0) / 100);
@@ -261,23 +261,55 @@ function channelLabel(id) {
   return state.channels.find((c) => c.id === id)?.label ?? id;
 }
 
+const ORIGIN_TAG = {
+  catalogo: { tag: 'ilustrativa', hint: 'foto oficial do catálogo do Mercado Livre: mostra o modelo, não o seu item' },
+  ia: { tag: 'IA', hint: 'versão tratada por IA a partir de uma foto sua' },
+  url: { tag: 'link', hint: 'foto importada de um link' },
+};
+
+/** Um quadro da galeria: miniatura, selos de capa/origem, dimensão e ações. */
+function photoCard(img, idx) {
+  const marca = ORIGIN_TAG[img.origin];
+  const dim = img.width ? `${img.width}×${img.height}` : '';
+  const podeIa = Boolean(state.ai?.image?.configured) && img.origin !== 'catalogo';
+  return `
+    <figure class="shot" draggable="true" data-id="${img.id}" data-origin="${esc(img.origin)}">
+      <img src="${esc(img.url)}" alt="" loading="lazy">
+      <div class="shot-tags">
+        ${idx === 0 ? '<span class="tag capa">capa</span>' : ''}
+        ${marca ? `<span class="tag ${esc(img.origin)}" title="${esc(img.sourceLabel || marca.hint)}">${marca.tag}</span>` : ''}
+      </div>
+      <div class="shot-acts">
+        ${podeIa ? `<button data-enhance="${img.id}" title="Melhorar com IA">✨</button>` : ''}
+        <button data-img="${img.id}" title="Remover">✕</button>
+      </div>
+      ${dim ? `<figcaption class="muted">${dim}</figcaption>` : ''}
+    </figure>`;
+}
+
 async function openDetail(id) {
   const data = await api(`/products/${id}`);
   state.channels = data.channels.length ? data.channels : state.channels;
   const { product, listings, channels } = data;
 
   $('#det-titulo').textContent = product.title;
+  const podeIa = Boolean(state.ai?.image?.configured);
   $('#det-corpo').innerHTML = `
     <section>
       <h3>Fotos</h3>
-      <div class="gallery" id="galeria">${product.images.map((i) => `
-        <figure><img src="${esc(i.url)}" alt=""><button data-img="${i.id}" title="Remover">✕</button></figure>`).join('')}
-      </div>
+      <div class="gallery" id="galeria">${product.images.map(photoCard).join('')}</div>
       <p class="row">
-        <input type="file" id="files" accept="image/jpeg,image/png,image/webp" multiple>
+        <input type="file" id="files" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple>
         <button id="upload">Enviar fotos</button>
+        <button id="qr">Enviar do celular</button>
+        <button id="link">Colar link de foto</button>
+        ${product.kind === 'geral' ? '<button id="catalogo">Buscar fotos do catálogo</button>' : ''}
       </p>
-      <small class="muted">A primeira foto é a principal. As plataformas baixam as imagens pela URL pública.</small>
+      <div id="foto-painel"></div>
+      <small class="muted">
+        Arraste para reordenar. A primeira foto é a capa e tem de ser foto sua — foto de catálogo é ilustrativa
+        e entra depois.${podeIa ? ' O ✨ gera uma versão tratada da foto, sem apagar a original.' : ''}
+      </small>
     </section>
     <section>
       <h3>Canais</h3>
@@ -307,7 +339,215 @@ async function openDetail(id) {
     </section>`;
 
   $('#det-corpo').dataset.productId = product.id;
-  $('#dlg-detalhe').showModal();
+  installGalleryDnd(product.id);
+  if (!$('#dlg-detalhe').open) $('#dlg-detalhe').showModal();
+}
+
+/**
+ * Reordenar arrastando. A ordem nova vai para a API, que recusa foto
+ * ilustrativa na capa -- quando isso acontece, voltamos a ordem anterior.
+ */
+function installGalleryDnd(productId) {
+  const galeria = $('#galeria');
+  if (!galeria) return;
+  let arrastando = null;
+
+  galeria.addEventListener('dragstart', (ev) => {
+    arrastando = ev.target.closest('.shot');
+    if (!arrastando) return;
+    arrastando.classList.add('dragging');
+    ev.dataTransfer.effectAllowed = 'move';
+  });
+
+  galeria.addEventListener('dragend', () => {
+    arrastando?.classList.remove('dragging');
+    arrastando = null;
+  });
+
+  galeria.addEventListener('dragover', (ev) => {
+    if (!arrastando) return;
+    ev.preventDefault();
+    const alvo = ev.target.closest('.shot');
+    if (!alvo || alvo === arrastando) return;
+    const r = alvo.getBoundingClientRect();
+    const depois = ev.clientX > r.left + r.width / 2;
+    alvo.parentNode.insertBefore(arrastando, depois ? alvo.nextSibling : alvo);
+  });
+
+  galeria.addEventListener('drop', async (ev) => {
+    ev.preventDefault();
+    const ids = $$('.shot', galeria).map((f) => f.dataset.id);
+    try {
+      await api(`/products/${productId}/images/order`, { method: 'PUT', body: JSON.stringify({ ids }) });
+      await loadProducts();
+      openDetail(productId);
+    } catch (err) {
+      alert(err.message);
+      openDetail(productId); // desfaz o arrasto na tela
+    }
+  });
+}
+
+function fotoPainel(html) {
+  $('#foto-painel').innerHTML = html;
+}
+
+/** Candidatas do catalogo do ML: nada entra sem voce marcar. */
+async function abrirCatalogo(productId) {
+  fotoPainel('<p class="muted">Procurando no catálogo do Mercado Livre...</p>');
+  let data;
+  try {
+    data = await api(`/products/${productId}/reference-images`);
+  } catch (err) {
+    return fotoPainel(`<p class="erro">${esc(err.message)}</p>`);
+  }
+  if (!data.candidates.length) {
+    return fotoPainel(`<p class="muted">${esc(data.message ?? 'nenhuma foto encontrada')}</p>`);
+  }
+  fotoPainel(`
+    <div class="painel">
+      <p><strong>Fotos oficiais do catálogo</strong> — ilustram o modelo, não o seu item.
+      Elas entram depois das suas fotos e a descrição ganha o aviso de foto ilustrativa.</p>
+      <div class="gallery">${data.candidates.map((c, i) => `
+        <figure class="shot">
+          <label><input type="checkbox" class="refbox" data-i="${i}"><img src="${esc(c.url)}" alt="" loading="lazy"></label>
+          <figcaption class="muted">${esc(c.label)}</figcaption>
+        </figure>`).join('')}
+      </div>
+      <p class="row"><button id="ref-add" class="primary">Adicionar selecionadas</button>
+      <button id="ref-cancel">Fechar</button><span id="ref-status" class="muted"></span></p>
+    </div>`);
+
+  $('#ref-cancel').onclick = () => fotoPainel('');
+  $('#ref-add').onclick = async (ev) => {
+    const escolhidas = $$('.refbox').filter((b) => b.checked).map((b) => data.candidates[Number(b.dataset.i)]);
+    if (!escolhidas.length) return alert('Marque as fotos que você quer.');
+    ev.target.disabled = true;
+    $('#ref-status').textContent = 'baixando...';
+    try {
+      await api(`/products/${productId}/reference-images`, {
+        method: 'POST',
+        body: JSON.stringify({ images: escolhidas }),
+      });
+      await loadProducts();
+      openDetail(productId);
+    } catch (err) {
+      $('#ref-status').textContent = '';
+      alert(err.message);
+      ev.target.disabled = false;
+    }
+  };
+}
+
+async function abrirQr(productId) {
+  fotoPainel('<p class="muted">Gerando QR Code...</p>');
+  try {
+    const qr = await api(`/products/${productId}/upload-qr`);
+    const expira = new Date(qr.expiresAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    fotoPainel(`
+      <div class="painel qr">
+        <div>${qr.svg}</div>
+        <div>
+          <p><strong>Aponte a câmera do celular.</strong> O link abre uma página de envio e vale até ${esc(expira)}.</p>
+          <p class="muted"><a href="${esc(qr.url)}" target="_blank" rel="noopener">${esc(qr.url)}</a></p>
+          ${qr.warning ? `<p class="erro">${esc(qr.warning)}</p>` : ''}
+          <p class="row"><button id="qr-pronto">Já enviei, atualizar</button><button id="qr-fechar">Fechar</button></p>
+        </div>
+      </div>`);
+    $('#qr-fechar').onclick = () => fotoPainel('');
+    $('#qr-pronto').onclick = async () => { await loadProducts(); openDetail(productId); };
+  } catch (err) {
+    fotoPainel(`<p class="erro">${esc(err.message)}</p>`);
+  }
+}
+
+function abrirLink(productId) {
+  fotoPainel(`
+    <div class="painel">
+      <p class="row">
+        <input type="url" id="link-url" placeholder="https://..." style="flex:1">
+        <button id="link-add" class="primary">Importar</button>
+        <button id="link-cancel">Fechar</button>
+      </p>
+      <small class="muted">O link precisa ser público (uma imagem que abre direto no navegador).</small>
+    </div>`);
+  $('#link-cancel').onclick = () => fotoPainel('');
+  $('#link-add').onclick = async (ev) => {
+    const url = $('#link-url').value.trim();
+    if (!url) return;
+    ev.target.disabled = true;
+    try {
+      await api(`/products/${productId}/images/from-url`, { method: 'POST', body: JSON.stringify({ url }) });
+      await loadProducts();
+      openDetail(productId);
+    } catch (err) {
+      alert(err.message);
+      ev.target.disabled = false;
+    }
+  };
+}
+
+/**
+ * "Melhorar foto": escolhe o modo, gera e mostra antes/depois. A original fica
+ * no anuncio -- desfazer apaga a versao nova, nao a sua foto.
+ */
+function abrirMelhoria(productId, imageId) {
+  const img = state.products.find((p) => p.id === productId)?.images.find((i) => i.id === imageId);
+  const modos = state.ai?.image?.modes ?? [];
+  fotoPainel(`
+    <div class="painel">
+      <p><strong>Melhorar esta foto com IA</strong> — cada clique gera uma imagem nova e é cobrado na sua conta
+      do Gemini. A sua foto original continua no anúncio.</p>
+      <div class="painel-par">
+        ${img ? `<figure class="shot"><img src="${esc(img.url)}" alt=""><figcaption class="muted">sua foto</figcaption></figure>` : ''}
+        <div class="row">
+          ${modos.map((m) => `<button data-mode="${esc(m.id)}">${esc(m.label)}</button>`).join('')}
+          <button id="ia-fechar">Fechar</button>
+        </div>
+      </div>
+      <p id="ia-status" class="muted"></p>
+      <small class="muted">A IA recebe ordem de não esconder arranhão, amassado ou desgaste: foto que esconde
+      defeito gera reclamação e, no Mercado Livre, atinge sua reputação.</small>
+    </div>`);
+
+  $('#ia-fechar').onclick = () => fotoPainel('');
+  $$('[data-mode]', $('#foto-painel')).forEach((btn) => {
+    btn.onclick = async () => {
+      $$('[data-mode]', $('#foto-painel')).forEach((b) => (b.disabled = true));
+      $('#ia-status').textContent = 'gerando (pode levar meio minuto)...';
+      try {
+        const out = await api(`/images/${imageId}/enhance`, {
+          method: 'POST',
+          body: JSON.stringify({ mode: btn.dataset.mode }),
+        });
+        const nova = out.product.images.find((i) => i.id === out.imageId);
+        await loadProducts();
+        await openDetail(productId);
+        fotoPainel(`
+          <div class="painel">
+            <p><strong>Versão gerada.</strong> Compare antes de decidir.</p>
+            <div class="painel-par">
+              ${img ? `<figure class="shot"><img src="${esc(img.url)}" alt=""><figcaption class="muted">sua foto</figcaption></figure>` : ''}
+              <figure class="shot"><img src="${esc(nova.url)}" alt=""><figcaption class="muted">versão da IA</figcaption></figure>
+            </div>
+            <p class="row">
+              <button id="ia-manter" class="primary">Manter</button>
+              <button id="ia-desfazer">Desfazer (apagar a versão da IA)</button>
+            </p>
+          </div>`);
+        $('#ia-manter').onclick = () => fotoPainel('');
+        $('#ia-desfazer').onclick = async () => {
+          await api(`/images/${out.imageId}`, { method: 'DELETE' });
+          await loadProducts();
+          openDetail(productId);
+        };
+      } catch (err) {
+        $('#ia-status').textContent = '';
+        alert(err.message);
+        $$('[data-mode]', $('#foto-painel')).forEach((b) => (b.disabled = false));
+      }
+    };
+  });
 }
 
 $('#det-corpo').addEventListener('click', async (ev) => {
@@ -332,6 +572,11 @@ $('#det-corpo').addEventListener('click', async (ev) => {
     await loadProducts();
     openDetail(productId);
   }
+
+  if (t.id === 'catalogo') abrirCatalogo(productId);
+  if (t.id === 'qr') abrirQr(productId);
+  if (t.id === 'link') abrirLink(productId);
+  if (t.dataset.enhance) abrirMelhoria(productId, t.dataset.enhance);
 
   if (t.dataset.kit) showKit(productId, t.dataset.kit);
 
@@ -455,6 +700,7 @@ async function boot() {
     $('#banner').textContent = avisos.join(' ');
   }
   const ai = await api('/ai/status');
+  state.ai = ai;
   $('#ai-model').textContent = ai.configured ? ai.model : '';
   if (!ai.configured) {
     $('#ai-box').dataset.off = '1';
