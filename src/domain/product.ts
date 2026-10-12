@@ -77,13 +77,17 @@ export type ProductInput = z.infer<typeof productInput>;
  * De onde a foto veio:
  * - `upload`  foto sua, tirada do item real. A unica que pode ser capa.
  * - `catalogo` foto oficial do catalogo do Mercado Livre: ilustra o modelo.
- * - `url`     imagem baixada de um link que voce colou.
+ * - `url`     foto sua baixada de um link que voce colou (Drive, Fotos, nuvem).
  * - `ia`      versao tratada por IA de uma foto sua.
  */
 export type ImageOrigin = 'upload' | 'catalogo' | 'url' | 'ia';
 
-/** Fotos que NAO sao do item real: entram como ilustrativas e nunca como capa. */
-export const ILLUSTRATIVE_ORIGINS: readonly ImageOrigin[] = ['catalogo', 'url'];
+/**
+ * Fotos que NAO mostram o item real: entram como ilustrativas, nunca como capa,
+ * e exigem o aviso na descricao. So o catalogo cai aqui -- link colado e foto
+ * sua que estava na nuvem, e a versao de IA sai de uma foto sua.
+ */
+export const ILLUSTRATIVE_ORIGINS: readonly ImageOrigin[] = ['catalogo'];
 
 export function isOwnPhoto(image: Pick<ProductImage, 'origin'>) {
   return !ILLUSTRATIVE_ORIGINS.includes(image.origin);

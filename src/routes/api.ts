@@ -14,7 +14,18 @@ import {
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
-import { ACCEPTED_MIME, ImageError, originalsDir, processUpload } from '../services/images.ts';
+import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
+import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
+
+const referenceBody = z.object({
+  images: z.array(z.object({
+    url: z.string().url(),
+    label: z.string().max(200).optional(),
+    sourceUrl: z.string().url().optional(),
+  })).min(1).max(10),
+});
+
+const fromUrlBody = z.object({ url: z.string().url() });
 
 const draftBody = z.object({
   kind: z.enum(['geral', 'veiculo', 'imovel']),
@@ -31,6 +42,19 @@ const publishBody = z.object({
 });
 
 /** Garante que o caminho resolvido continua dentro de uploadsDir. */
+/** Baixa a primeira URL que responder imagem; se nenhuma responder, propaga o ultimo erro. */
+async function firstAvailable(urls: string[]) {
+  let last: unknown;
+  for (const url of urls) {
+    try {
+      return await fetchRemoteImage(url);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
+}
+
 function uploadPath(filename: string) {
   const full = resolve(config.uploadsDir, filename);
   if (!full.startsWith(resolve(config.uploadsDir))) throw new ChannelError('caminho de arquivo invalido');
@@ -168,6 +192,62 @@ export async function registerApiRoutes(app: FastifyInstance) {
       await unlink(join(originalsDir, image.original_filename)).catch(() => {});
     }
     return { ok: true };
+  });
+
+  /**
+   * Fotos oficiais do catalogo do Mercado Livre para o titulo do produto.
+   * Nao grava nada: devolve candidatas para voce aprovar.
+   */
+  app.get('/products/:id/reference-images', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const product = getProduct(id);
+    if (!product) return reply.status(404).send({ error: 'produto nao encontrado' });
+    if (product.kind !== 'geral') {
+      return reply.send({
+        candidates: [],
+        message: 'o catalogo do Mercado Livre cobre produtos de linha. Veiculo e imovel sao unicos: use suas proprias fotos.',
+      });
+    }
+    const candidates = await findCatalogImages(product.title);
+    return {
+      candidates,
+      message: candidates.length ? undefined : 'nenhum produto parecido no catalogo. Tente um titulo com marca e modelo.',
+    };
+  });
+
+  /** Grava as candidatas que voce aprovou, como foto ilustrativa (nunca capa). */
+  app.post('/products/:id/reference-images', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+    const parsed = referenceBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'dados invalidos', issues: parsed.error.issues });
+
+    for (const item of parsed.data.images) {
+      // Tenta a variante de maior resolucao e cai para a URL que a API deu.
+      const buf = await firstAvailable(urlVariants(item.url));
+      const processed = await processUpload(buf, { productId: id });
+      addImage(id, {
+        ...processed,
+        origin: 'catalogo',
+        sourceUrl: item.sourceUrl ?? item.url,
+        sourceLabel: item.label ?? '',
+      });
+    }
+    logEvent('info', `${parsed.data.images.length} foto(s) de catalogo adicionadas`, { productId: id });
+    return reply.status(201).send({ product: getProduct(id) });
+  });
+
+  /** Importa uma foto de um link que voce colou (Drive, Fotos, anuncio antigo). */
+  app.post('/products/:id/images/from-url', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!getProduct(id)) return reply.status(404).send({ error: 'produto nao encontrado' });
+    const parsed = fromUrlBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'informe uma URL de imagem valida' });
+
+    const buf = await fetchRemoteImage(parsed.data.url);
+    const processed = await processUpload(buf, { productId: id });
+    addImage(id, { ...processed, origin: 'url', sourceUrl: parsed.data.url });
+    return reply.status(201).send({ product: getProduct(id) });
   });
 
   app.put('/products/:id/images/order', async (req) => {

@@ -1,5 +1,5 @@
 import { config } from '../config.ts';
-import { formatBRL, kmFormat, type Product } from '../domain/product.ts';
+import { formatBRL, isOwnPhoto, kmFormat, type Product } from '../domain/product.ts';
 
 const FUEL: Record<string, string> = {
   flex: 'Flex', gasolina: 'Gasolina', etanol: 'Etanol', diesel: 'Diesel',
@@ -69,6 +69,21 @@ export function locationLine(p: Product) {
   return [p.neighborhood, city, uf].filter(Boolean).join(' - ');
 }
 
+/**
+ * Aviso obrigatorio quando a galeria tem foto que nao e do item real: o
+ * comprador tem de saber qual foto e o produto dele e qual ilustra o modelo.
+ * E o que separa "foto de catalogo como referencia" de anuncio enganoso.
+ */
+export function illustrativeNote(p: Product): string | undefined {
+  const own = p.images.filter(isOwnPhoto).length;
+  const ilustrativas = p.images.length - own;
+  if (ilustrativas === 0) return undefined;
+  const quantas = ilustrativas === 1 ? 'A ultima foto e ilustrativa' : `As ${ilustrativas} ultimas fotos sao ilustrativas`;
+  return `${quantas} do modelo, para mostrar os detalhes de fabrica. ${
+    own === 1 ? 'A primeira foto e' : `As ${own} primeiras fotos sao`
+  } do item real, como ele esta hoje.`;
+}
+
 /** Descricao longa usada nos canais com API (ML, OLX, catalogo Meta). */
 export function buildDescription(p: Product): string {
   const parts = [p.description.trim()];
@@ -77,6 +92,8 @@ export function buildDescription(p: Product): string {
   const loc = locationLine(p);
   if (loc) parts.push(`LOCALIZACAO\n${loc}`);
   if (p.acceptsTrade) parts.push('Aceito troca.');
+  const nota = illustrativeNote(p);
+  if (nota) parts.push(`SOBRE AS FOTOS\n${nota}`);
   return parts.filter(Boolean).join('\n\n').slice(0, 7000);
 }
 
@@ -93,6 +110,8 @@ export function buildGroupPost(p: Product): string {
   if (specs.length) lines.push('', ...specs.map((l) => `- ${l}`));
   if (loc) lines.push('', `Local: ${loc}`);
   if (p.acceptsTrade) lines.push('Aceito troca.');
+  const nota = illustrativeNote(p);
+  if (nota) lines.push('', nota);
   const contact = [config.seller.name, config.seller.phone].filter(Boolean).join(' - ');
   if (contact) lines.push('', `Contato: ${contact}`);
   lines.push('', hashtags(p).join(' '));
