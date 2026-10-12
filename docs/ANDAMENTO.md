@@ -43,9 +43,11 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | Mercado Livre — publicação | **quase**: último erro foi o modo de envio (`lost_me1_by_user`), já resolvido no código |
 | OLX, Catálogo Meta, WhatsApp | **desativados por enquanto** (fora de `src/channels/registry.ts`; o código continua no repositório) |
 | Grupos do Facebook | funcionando como kit manual (não existe API) — botão **"Ver kit"** na tela de publicar |
+| Importar anúncios do ML | **feito** — botão "Importar do Mercado Livre": ativos, pausados e encerrados viram produtos ligados ao anúncio original |
+| Atualizar anúncio existente no ML | **feito** — produto com anúncio publica com `PUT /items/:id` (mesmo anúncio); pausado é reativado; encerrado volta por `relist` (número novo) |
 | Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **79 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **87 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -86,6 +88,14 @@ O que mudou de método no caminho, e vale manter:
 
 ---
 
+## 4b. Importar e melhorar anúncios antigos do ML
+
+Decidido com o dono (out/2026): **editar o mesmo anúncio**, não criar outro — são itens pessoais, sem histórico de vendas a perder. Pausados e encerrados entram também.
+
+- **Importar** (`src/channels/mercadolivre/importer.ts` + `src/services/mlImport.ts`): `/users/:id/items/search` com `status=active|paused|closed`, `/items?ids=` (20 por vez) e `/items/:id/description`. Cada item vira produto; marca, modelo, código de barras e garantia vão para o cadastro; o resto dos atributos (VOLTAGE...) vai para "Atributos do Mercado Livre"; as fotos passam por `processUpload` e entram como foto sua (`url`). Rodar de novo só traz os novos. **Veículo e imóvel ficam de fora** (cadastro próprio, mais campos).
+- **Atualizar** (`src/channels/mercadolivre/update.ts`): quando o produto já tem anúncio, Publicar faz `PUT /items/:id` (preço, quantidade, fotos, atributos, garantia e, **só sem vendas e fora do modelo de produto**, o título) e `PUT /items/:id/description`. Se o ML recusar título/atributos, tenta de novo só com preço, quantidade e fotos, e avisa. Pausado → `status: active`. Encerrado → `POST /items/:id/relist` (o ML não edita encerrado; volta com **número novo**). Se o relist for recusado, cria anúncio novo e diz.
+- Não verificado contra o ML real: formato exato da resposta de `/users/:id/items/search` por status e do `relist`.
+
 ## 5. Pendências e pontos não verificados
 
 Não verificados contra o serviço real (este ambiente de desenvolvimento não alcança `api.mercadolibre.com` nem o Gemini com chave real):
@@ -106,7 +116,6 @@ Ainda não configurados:
 Pesquisado, não feito (out/2026):
 
 - [ ] **Enjoei** — não tem API pública para vendedor. A única integração documentada é via VTEX (lojista, por contrato). Para pessoa física, publicar à mão — dá para virar um kit manual, como o dos grupos do Facebook.
-- [ ] **Importar os anúncios que já estão no ML** — é possível pela API com a conta já conectada: `GET /users/:id/items/search` (lista os IDs; `search_type=scan` passa de 1000), `GET /items?ids=...` (até 20 por vez: título, preço, fotos, atributos, estado) e `GET /items/:id/description`. As fotos têm de passar por `processUpload`. Falta decidir com o dono: melhorar e **editar o mesmo anúncio** (`PUT /items/:id` + descrição; mantém vendas e reputação, mas o título não muda depois de ter venda) ou **republicar como anúncio novo**.
 
 Ideias levantadas, não feitas:
 

@@ -36,6 +36,8 @@ export interface PublishContext {
   account?: ChannelAccount;
   /** Em dryRun o adapter monta o payload mas nao chama a plataforma. */
   dryRun: boolean;
+  /** Anuncio que o produto ja tem na plataforma: publicar de novo atualiza este, nao cria outro. */
+  externalId?: string;
 }
 
 export interface PublishResult {

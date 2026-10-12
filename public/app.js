@@ -99,6 +99,34 @@ $('[name="title"]').addEventListener('input', (ev) => {
 
 $('#novo').addEventListener('click', () => openForm(null));
 
+/**
+ * Traz os anuncios que ja estao na conta do ML. Cada um vira um produto ligado
+ * ao anuncio original: melhore texto e fotos e clique em Publicar, que
+ * atualiza o MESMO anuncio.
+ */
+$('#importar-ml').addEventListener('click', async (ev) => {
+  const btn = ev.currentTarget;
+  const caixa = $('#import-resultado');
+  btn.disabled = true;
+  caixa.innerHTML = '<p class="muted">Buscando seus anúncios no Mercado Livre e baixando as fotos... pode levar um minuto.</p>';
+  try {
+    const r = await api('/mercadolivre/import', { method: 'POST', body: '{}' });
+    const linhas = [
+      `<strong>${r.importados.length}</strong> anúncio(s) importado(s) de ${r.encontrados} encontrado(s)`
+        + (r.jaImportados ? ` · ${r.jaImportados} já estava(m) aqui` : ''),
+      ...r.importados.filter((i) => i.fotosFalharam).map((i) =>
+        `${esc(i.title)}: ${i.fotosFalharam} foto(s) não baixaram — envie de novo`),
+      ...r.pulados.map((p) => `Não importado: ${esc(p.title || p.externalId)} — ${esc(p.motivo)}`),
+    ];
+    caixa.innerHTML = `<div class="painel"><p>${linhas.join('<br>')}</p>
+      <small class="muted">Abra um produto importado, clique em Editar (o ✨ "Reescrever anúncio" ajuda no texto),
+      salve e use Publicar: o mesmo anúncio é atualizado no ML.</small></div>`;
+    await loadProducts();
+  } catch (err) {
+    caixa.innerHTML = `<p class="erro">${esc(err.message)}</p>`;
+  } finally { btn.disabled = false; }
+});
+
 // ---------- geracao com IA ----------
 
 /** Escreve o rascunho do Gemini nos campos, sem apagar o que o usuario ja digitou de preco/local. */
@@ -337,6 +365,9 @@ async function openDetail(id) {
             <span>${esc(c.label)}${c.label.includes(`(${c.mode})`) ? '' : ` <small class="muted">(${c.mode})</small>`}</span>
           </label>
           ${listing ? `<span class="pill ${listing.status}">${esc(listing.status)}</span>` : ''}
+          ${listing?.externalId && c.id === 'mercadolivre'
+            ? `<small class="muted">${esc(listing.externalId)} — publicar atualiza este mesmo anúncio${
+              listing.status === 'encerrado' ? ' (encerrado: o ML republica)' : listing.status === 'pausado' ? ' e o reativa' : ''}</small>` : ''}
           ${listing?.permalink ? `<a href="${esc(listing.permalink)}" target="_blank" rel="noopener">abrir</a>` : ''}
           ${c.mode === 'manual' ? `<button data-kit="${c.id}">Ver kit</button>` : ''}
           ${listing?.externalId && c.id === 'mercadolivre'

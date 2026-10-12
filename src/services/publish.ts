@@ -64,6 +64,27 @@ function upsertListing(productId: string, channel: string, patch: Partial<Listin
   return get<ListingRow>('SELECT * FROM listings WHERE id = ?', id)!;
 }
 
+/** Listing de um canal pelo id do anuncio na plataforma (ex.: MLB123). */
+export function findListingByExternalId(channel: string, externalId: string): Listing | undefined {
+  const row = get<ListingRow>('SELECT * FROM listings WHERE channel = ? AND external_id = ?', channel, externalId);
+  return row ? toListing(row) : undefined;
+}
+
+/** Liga um produto a um anuncio que ja existia na plataforma (importacao). */
+export function linkListing(
+  productId: string,
+  channel: string,
+  l: { status: ListingStatus; externalId: string; permalink?: string | null; publishedAt?: string | null },
+) {
+  return toListing(upsertListing(productId, channel, {
+    status: l.status,
+    external_id: l.externalId,
+    permalink: l.permalink ?? null,
+    published_at: l.publishedAt ?? null,
+    error: null,
+  }));
+}
+
 export interface PublishOutcome {
   channel: string;
   status: ListingStatus;
@@ -107,7 +128,12 @@ export async function publishToChannel(
   upsertListing(productId, channelId, { status: 'publicando', error: null });
 
   try {
-    const result = await channel.publish({ product, account: getAccount(channelId), dryRun });
+    const result = await channel.publish({
+      product,
+      account: getAccount(channelId),
+      dryRun,
+      externalId: getListing(productId, channelId)?.externalId ?? undefined,
+    });
     const row = upsertListing(productId, channelId, {
       status: result.status,
       external_id: result.externalId ?? null,

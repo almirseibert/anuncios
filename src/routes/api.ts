@@ -13,9 +13,10 @@ import {
   listProducts, removeImage, reorderImages, setChannelAttrs, updateProduct,
 } from '../services/products.ts';
 import { allListings, changeListingStatus, listingsFor, publishToChannels } from '../services/publish.ts';
+import { importFromMercadoLivre } from '../services/mlImport.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
 import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
-import { ACCEPTED_MIME, ImageError, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
+import { ACCEPTED_MIME, ImageError, fetchFirstImage, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
 import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
 import { fetchCategory, fetchCategoryAttributes, requiredFields } from '../channels/mercadolivre/categoryAttrs.ts';
 import { formAttributeIds, predictCategory } from '../channels/mercadolivre/map.ts';
@@ -68,18 +69,6 @@ function invalidMessage(error: z.ZodError) {
 }
 
 /** Baixa a primeira URL que responder imagem; se nenhuma responder, propaga o ultimo erro. */
-async function firstAvailable(urls: string[]) {
-  let last: unknown;
-  for (const url of urls) {
-    try {
-      return await fetchRemoteImage(url);
-    } catch (err) {
-      last = err;
-    }
-  }
-  throw last;
-}
-
 function uploadPath(filename: string) {
   const full = resolve(config.uploadsDir, filename);
   if (!full.startsWith(resolve(config.uploadsDir))) throw new ChannelError('caminho de arquivo invalido');
@@ -100,6 +89,18 @@ export async function registerApiRoutes(app: FastifyInstance) {
     aiModel: config.gemini.model,
     olxFeedUrl: `${config.publicUrl}/feeds/olx.xml${config.olxFeedToken ? `?token=${config.olxFeedToken}` : ''}`,
   }));
+
+  /**
+   * Traz os anuncios da conta do ML (ativos, pausados, encerrados) que ainda
+   * nao estao aqui. Publicar um deles depois atualiza o mesmo anuncio.
+   */
+  app.post('/mercadolivre/import', async () => {
+    const report = await importFromMercadoLivre();
+    logEvent('info', `importacao do ML: ${report.importados.length} novo(s), ${report.jaImportados} ja estavam aqui`, {
+      channel: 'mercadolivre', data: report,
+    });
+    return report;
+  });
 
   app.get('/channels', async () => ({
     channels: channelStatus().map((c) => {
@@ -251,7 +252,7 @@ export async function registerApiRoutes(app: FastifyInstance) {
 
     for (const item of parsed.data.images) {
       // Tenta a variante de maior resolucao e cai para a URL que a API deu.
-      const buf = await firstAvailable(urlVariants(item.url));
+      const buf = await fetchFirstImage(urlVariants(item.url));
       const processed = await processUpload(buf, { productId: id });
       addImage(id, {
         ...processed,

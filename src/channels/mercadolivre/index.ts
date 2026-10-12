@@ -7,6 +7,7 @@ import { comDica } from './errors.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, listingTypeId, predictCategory } from './map.ts';
 import { preflight, type Preflight } from './preflight.ts';
+import { updateExisting } from './update.ts';
 import { photoIssues } from '../../services/images.ts';
 
 function validate(product: Product): ValidationIssue[] {
@@ -133,6 +134,17 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
 
   const account = await ensureToken();
   const token = account.accessToken!;
+
+  // Produto que ja tem anuncio no ML (importado ou publicado daqui): atualiza
+  // o mesmo anuncio. So cria outro se o antigo nao puder mais voltar.
+  let antes = '';
+  if (ctx.externalId) {
+    const r = await updateExisting(product, ctx.externalId, token);
+    if ('result' in r) return r.result;
+    antes = `o anuncio ${ctx.externalId} estava encerrado e o ML nao deixou republica-lo (${r.semVolta}); `
+      + 'foi criado um anuncio novo. ';
+  }
+
   const { pf, payload } = await preparar(product, token);
 
   let created: { id: string; permalink: string; status: string };
@@ -168,7 +180,7 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
     permalink: created.permalink,
     payload,
     result: created,
-    message: `anuncio ${created.id} criado${aviso}${lista('Atencao:', pf.avisos)}`,
+    message: `${antes}anuncio ${created.id} criado${aviso}${lista('Atencao:', pf.avisos)}`,
   };
 }
 

@@ -139,6 +139,19 @@ export async function fetchRemoteImage(url: string): Promise<Buffer> {
   return buf;
 }
 
+/** Baixa a primeira URL que responder; serve para tentar a variante maior e cair para a garantida. */
+export async function fetchFirstImage(urls: string[]): Promise<Buffer> {
+  let last: unknown;
+  for (const url of urls) {
+    try {
+      return await fetchRemoteImage(url);
+    } catch (err) {
+      last = err;
+    }
+  }
+  throw last;
+}
+
 /**
  * Minimos de resolucao por canal. Abaixo do minimo a plataforma recusa a foto;
  * abaixo do recomendado ela aceita mas o anuncio fica com zoom ruim.
