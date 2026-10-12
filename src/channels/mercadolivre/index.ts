@@ -1,7 +1,8 @@
 import { config, isLocalUrl } from '../../config.ts';
 import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
-import type { Channel, PublishContext, PublishResult, ValidationIssue } from '../types.ts';
+import { ChannelError, type Channel, type PublishContext, type PublishResult, type ValidationIssue } from '../types.ts';
+import { buildDescription } from '../../services/templates.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, predictCategory } from './map.ts';
 import { photoIssues } from '../../services/images.ts';
@@ -33,16 +34,52 @@ function validate(product: Product): ValidationIssue[] {
   return issues;
 }
 
-async function publish(ctx: PublishContext): Promise<PublishResult> {
-  const { product } = ctx;
-
-  if (ctx.dryRun) {
+/**
+ * Em dry-run, quando a conta esta conectada, quem diz se o anuncio esta valido
+ * e o proprio Mercado Livre: POST /items/validate aceita o payload inteiro e
+ * devolve os erros sem criar anuncio nenhum. Isso evita descobrir cada regra
+ * nova do ML uma por vez, tentando publicar de verdade.
+ */
+async function dryRun(product: PublishContext['product']): Promise<PublishResult> {
+  let token: string;
+  try {
+    token = (await ensureToken()).accessToken!;
+  } catch {
     return {
       status: 'rascunho',
       payload: buildItem(product, '(categoria definida na publicacao real)'),
-      message: 'DRY_RUN ligado: payload montado, nada enviado ao Mercado Livre.',
+      message: 'DRY_RUN ligado: payload montado, nada enviado. Conecte o Mercado Livre na aba Canais '
+        + 'para que o proprio ML confira o anuncio antes de voce publicar.',
     };
   }
+
+  const categoryId = await predictCategory(product.title, token);
+  const payload = buildItem(product, categoryId);
+  try {
+    const result = await request(`${ML_API}/items/validate`, {
+      method: 'POST',
+      json: payload,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return {
+      status: 'rascunho',
+      payload,
+      result,
+      message: 'o Mercado Livre validou este anuncio: pode publicar (desligue DRY_RUN).',
+    };
+  } catch (err) {
+    return {
+      status: 'erro',
+      payload,
+      result: err instanceof ChannelError ? err.detail : undefined,
+      message: `o Mercado Livre recusaria este anuncio: ${(err as Error).message}`,
+    };
+  }
+}
+
+async function publish(ctx: PublishContext): Promise<PublishResult> {
+  const { product } = ctx;
+  if (ctx.dryRun) return dryRun(product);
 
   const account = await ensureToken();
   const token = account.accessToken!;
@@ -55,13 +92,28 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
     headers: { authorization: `Bearer ${token}` },
   });
 
+  // A descricao deixou de ser aceita no corpo do item (o ML desativou o campo
+  // em 2021): ela vai numa chamada propria, depois que o anuncio existe.
+  let aviso = '';
+  try {
+    await request(`${ML_API}/items/${created.id}/description`, {
+      method: 'POST',
+      json: { plain_text: buildDescription(product) },
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    // O anuncio ja existe: nao da para desfazer por causa da descricao.
+    aviso = ` -- ATENCAO: a descricao nao subiu (${(err as Error).message}). `
+      + 'Edite a descricao no painel do Mercado Livre ou publique de novo.';
+  }
+
   return {
     status: 'publicado',
     externalId: created.id,
     permalink: created.permalink,
     payload,
     result: created,
-    message: `anuncio ${created.id} criado`,
+    message: `anuncio ${created.id} criado${aviso}`,
   };
 }
 

@@ -77,7 +77,7 @@ docker compose up --build
 
 ### Dois ajustes antes de publicar de verdade
 
-1. **`DRY_RUN=true`** (padrão) monta o payload e grava tudo, mas não chama as plataformas. Deixe ligado até validar as credenciais; a tela de publicação mostra o JSON exato que seria enviado.
+1. **`DRY_RUN=true`** (padrão) monta o payload e grava tudo, mas não publica. A tela mostra o JSON exato que seria enviado. No Mercado Livre, com a conta conectada, o dry-run vai além: manda o payload ao endpoint de **validação** do próprio ML, que responde se o anúncio seria aceito e, se não, qual regra falhou — sem criar anúncio nenhum.
 2. **`PUBLIC_URL`** precisa ser uma URL que a internet alcança — as plataformas **baixam as fotos** por ela. Com `localhost` nenhuma foto chega. Em desenvolvimento use um túnel:
 
 ```bash

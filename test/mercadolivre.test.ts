@@ -105,3 +105,9 @@ test('classificado (veiculo/imovel) nao leva sale_terms', () => {
   assert.equal(item.sale_terms, undefined);
   assert.equal(item.buying_mode, 'classified');
 });
+
+test('a descricao nao vai mais no corpo do item (o ML desativou o campo em 2021)', () => {
+  const item = buildItem(produto(), 'MLB1144') as unknown as Record<string, unknown>;
+  assert.equal('description' in item, false);
+  assert.equal(Array.isArray(item.pictures), true);
+});

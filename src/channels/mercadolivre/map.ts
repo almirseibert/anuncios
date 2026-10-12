@@ -1,6 +1,5 @@
 import { config } from '../../config.ts';
 import { request } from '../../lib/http.ts';
-import { buildDescription } from '../../services/templates.ts';
 import type { Product } from '../../domain/product.ts';
 import { ML_API } from './auth.ts';
 
@@ -128,7 +127,6 @@ export interface MlItemPayload {
   buying_mode: 'buy_it_now' | 'classified';
   condition: 'new' | 'used';
   listing_type_id: string;
-  description: { plain_text: string };
   pictures: Array<{ source: string }>;
   attributes: MlAttribute[];
   sale_terms?: MlAttribute[];
@@ -147,7 +145,6 @@ export function buildItem(product: Product, categoryId?: string): MlItemPayload 
     buying_mode: isClassified ? 'classified' : 'buy_it_now',
     condition: product.condition === 'novo' ? 'new' : 'used',
     listing_type_id: listingTypeId(product),
-    description: { plain_text: buildDescription(product) },
     pictures: product.images.map((i) => ({ source: i.url })),
     attributes: attrs(product),
     ...(isClassified ? {} : { sale_terms: saleTerms(product) }),
