@@ -19,7 +19,7 @@ import { importFromMercadoLivre } from '../services/mlImport.ts';
 import { aiConfigured, generateDraft } from '../services/ai.ts';
 import { ENHANCE_MODES, enhanceImage, imageAiConfigured, type EnhanceMode } from '../services/imageAi.ts';
 import { ACCEPTED_MIME, ImageError, fetchFirstImage, fetchRemoteImage, originalsDir, processUpload } from '../services/images.ts';
-import { findCatalogImages, urlVariants } from '../channels/mercadolivre/catalog.ts';
+import { findCatalogImages, findGtinCandidates, urlVariants } from '../channels/mercadolivre/catalog.ts';
 import { fetchCategory, fetchCategoryAttributes, requiredFields } from '../channels/mercadolivre/categoryAttrs.ts';
 import { formAttributeIds, predictCategory } from '../channels/mercadolivre/map.ts';
 import { ensureToken } from '../channels/mercadolivre/auth.ts';
@@ -42,6 +42,12 @@ const referenceBody = z.object({
 });
 
 const fromUrlBody = z.object({ url: z.string().url() });
+
+const gtinLookupBody = z.object({
+  title: z.string().max(200).default(''),
+  brand: z.string().max(60).default(''),
+  model: z.string().max(60).default(''),
+}).refine((v) => `${v.title}${v.brand}${v.model}`.trim().length >= 3);
 
 const mlAttrsBody = z.object({
   categoryId: z.string().regex(/^[A-Z]{3}\d+$/, 'categoria do ML no formato MLB1234'),
@@ -108,6 +114,23 @@ export async function registerApiRoutes(app: FastifyInstance) {
       channel: 'mercadolivre', data: report,
     });
     return report;
+  });
+
+  /**
+   * Codigos de barras do catalogo do ML para marca + modelo (ou titulo). So
+   * sugere: quem escolhe e confere com o produto e o vendedor. Funciona com o
+   * formulario ainda nao salvo, por isso recebe os campos e nao o id.
+   */
+  app.post('/mercadolivre/gtin-lookup', async (req, reply) => {
+    const parsed = gtinLookupBody.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: 'informe titulo, marca ou modelo' });
+    const { title, brand, model } = parsed.data;
+    const candidates = await findGtinCandidates({ title: title || `${brand} ${model}`, attrs: { brand, model } });
+    return {
+      candidates,
+      message: candidates.length ? undefined
+        : 'nenhum produto do catalogo com codigo de barras para esta marca/modelo. Confira a grafia, ou procure a etiqueta do produto.',
+    };
   });
 
   app.get('/channels', async () => ({

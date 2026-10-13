@@ -264,3 +264,23 @@ test('conta sem nenhum modo utilizavel e bloqueio explicado', () => {
   assert.equal(r.shipping, undefined);
   assert.match(r.problemas[0]!, /Ative o Mercado Envios/);
 });
+
+test('motivo "sem codigo" recusado pelo ML: a mensagem diz que o codigo e obrigatorio aqui', async () => {
+  contaMl({
+    '/items/validate': { status: 400, body: { message: 'Validation error', cause: [{
+      department: 'supply', cause_id: 7810, type: 'error', code: 'item.attribute.missing_conditional_required',
+      references: ['item.attributes'],
+      message: 'The attributes [GTIN] are required for category [MLB118902]. Check the attribute is present in the attributes list',
+    }] } },
+  });
+  const comMotivo = { ...produto, attrs: { ...produto.attrs, gtin: '', gtinMissingReason: 'nao_registrado' } };
+  const r = await mercadoLivre.publish({ product: comMotivo, dryRun: true });
+  assert.equal(r.status, 'erro');
+  assert.match(r.message!, /nao aceita "sem codigo de barras" nesta categoria/);
+  assert.match(r.message!, /Procurar no catalogo do ML/);
+
+  // sem motivo declarado, so a instrucao normal
+  const semMotivo = await mercadoLivre.publish({ product: produto, dryRun: true });
+  assert.equal(/nao aceita "sem codigo/.test(semMotivo.message!), false);
+  assert.match(semMotivo.message!, /Código de barras \(EAN\)/);
+});

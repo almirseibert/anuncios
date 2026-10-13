@@ -102,3 +102,23 @@ test('se o dominio nao achar nada, tenta sem dominio (ainda filtrando pecas)', a
   const r = await searchCatalog({ title: 'PS4', attrs: { brand: 'Sony', model: 'PS4 500GB' } });
   assert.deepEqual(r.map((x) => x.id), ['MLB-PS4']);
 });
+
+test('codigo de barras do catalogo: so sugere produtos que tem GTIN, sem pecas, com todos os codigos', async () => {
+  const { findGtinCandidates } = await import('../src/channels/mercadolivre/catalog.ts');
+  stub((u) => {
+    if (u.pathname.includes('domain_discovery')) return [{ domain_id: 'MLB-GAME_CONSOLES' }];
+    if (u.pathname === '/products/search') return { results: [...ventoinhas, ps4, { id: 'MLB-SEM', name: 'Sony PS4 500GB Mega Pack' }] };
+    if (u.pathname === '/products/MLB-PS4') {
+      return { id: 'MLB-PS4', name: ps4.name, permalink: '', pictures: [{ url: 'https://x/p.jpg' }],
+        attributes: [{ id: 'GTIN', value_name: '0711719541028,711719541028', values: [{ name: '0711719541028' }] }] };
+    }
+    return { id: 'MLB-SEM', name: 'Sem codigo', attributes: [{ id: 'BRAND', value_name: 'Sony' }] };
+  });
+  const r = await findGtinCandidates({ title: 'PS4', attrs: { brand: 'Sony', model: 'PS4 500GB' } });
+  assert.deepEqual(r, [{
+    productId: 'MLB-PS4', name: ps4.name, gtins: ['0711719541028', '711719541028'],
+    picture: 'https://x/p.jpg', permalink: 'https://www.mercadolivre.com.br/p/MLB-PS4',
+  }]);
+  // a busca ignora o GTIN do cadastro (e justamente o que se procura)
+  assert.equal(chamadas.some((u) => u.searchParams.has('product_identifier')), false);
+});

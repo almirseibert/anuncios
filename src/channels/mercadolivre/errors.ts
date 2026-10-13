@@ -6,7 +6,7 @@ import { ChannelError, type ListingStatus } from '../types.ts';
  * o campo que o vendedor precisa preencher.
  */
 const CAMPO_DO_ATRIBUTO: Record<string, string> = {
-  GTIN: 'Código de barras (EAN) — fica na caixa ou na etiqueta do produto',
+  GTIN: 'Código de barras (EAN) — fica na caixa ou na etiqueta do produto; sem a caixa, use "Procurar no catálogo do ML" ao lado do campo',
   BRAND: 'Marca',
   MODEL: 'Modelo',
 };

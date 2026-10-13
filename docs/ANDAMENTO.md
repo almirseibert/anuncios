@@ -47,7 +47,7 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | Atualizar anúncio existente no ML | **feito** — produto com anúncio publica com `PUT /items/:id` (mesmo anúncio); pausado é reativado; encerrado volta por `relist` (número novo) |
 | Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **102 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **104 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -125,7 +125,7 @@ Pesquisado, não feito (out/2026):
 Ideias levantadas, não feitas:
 
 - [ ] Marca d'água nas fotos **só dos canais manuais** (grupos, WhatsApp). O ML proíbe.
-- [ ] Buscar o GTIN automaticamente no catálogo do ML por marca + modelo, com confirmação antes de salvar.
+- [x] Buscar o GTIN no catálogo do ML por marca + modelo — botão "Procurar código de barras no catálogo do ML" no Editar (`findGtinCandidates` em `catalog.ts`). Só sugere: o vendedor confere e clica em "Usar"; nada é preenchido sozinho.
 - [ ] Sincronizar de volta perguntas, vendas e pausas feitas direto no ML.
 - [ ] Ícone do site (`/favicon.ico` dá 404 nos logs — inofensivo).
 

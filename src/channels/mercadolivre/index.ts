@@ -3,7 +3,7 @@ import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import { ChannelError, type Channel, type PublishContext, type PublishResult, type ValidationIssue } from '../types.ts';
 import { buildDescription } from '../../services/templates.ts';
-import { comDica, situacaoNoMl } from './errors.ts';
+import { atributosFaltando, comDica, situacaoNoMl } from './errors.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, listingTypeId, predictCategory } from './map.ts';
 import { preflight, type Preflight } from './preflight.ts';
@@ -74,9 +74,16 @@ async function preparar(product: Product, token: string) {
  * Mensagem de recusa: tudo o que precisa ser resolvido de uma vez -- o que a
  * pre-checagem achou e o que o ML respondeu, traduzido.
  */
-function recusa(prefixo: string, erro: unknown, pf: Preflight) {
+function recusa(prefixo: string, erro: unknown, pf: Preflight, product: Product) {
   const err = comDica(erro, new Set(pf.atributosCobrados));
-  const msg = (err as Error).message;
+  let msg = (err as Error).message;
+  // Com motivo declarado e o ML pedindo o codigo mesmo assim, o motivo nao vale
+  // para esta marca/categoria -- dizer so "preencha o codigo" deixaria a duvida.
+  const a = product.attrs as Record<string, unknown>;
+  if (a.gtinMissingReason && !a.gtin && err instanceof ChannelError && atributosFaltando(err.detail).includes('GTIN')) {
+    msg = 'O ML nao aceita "sem codigo de barras" nesta categoria ou para esta marca, mesmo com o motivo '
+      + 'informado: o codigo e obrigatorio. Use "Procurar no catalogo do ML" ao lado do campo, no Editar. ' + msg;
+  }
   return {
     err,
     message: pf.problemas.length
@@ -121,7 +128,7 @@ async function dryRun(product: PublishContext['product']): Promise<PublishResult
         + lista('Atencao:', [...pf.problemas, ...pf.avisos]),
     };
   } catch (erro) {
-    const { err, message } = recusa('o Mercado Livre recusaria este anuncio', erro, pf);
+    const { err, message } = recusa('o Mercado Livre recusaria este anuncio', erro, pf, product);
     return {
       status: 'erro',
       payload,
@@ -158,7 +165,7 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
       headers: { authorization: `Bearer ${token}` },
     });
   } catch (erro) {
-    const { err, message } = recusa('o Mercado Livre recusou o anuncio', erro, pf);
+    const { err, message } = recusa('o Mercado Livre recusou o anuncio', erro, pf, product);
     throw err instanceof ChannelError ? new ChannelError(message, err.detail) : err;
   }
 

@@ -35,6 +35,7 @@ interface ProductResponse {
   name?: string;
   permalink?: string;
   pictures?: Array<{ id?: string; url?: string; max_width?: number }>;
+  attributes?: Array<{ id?: string; value_name?: string | null; values?: Array<{ name?: string | null }> }>;
 }
 
 /**
@@ -198,6 +199,48 @@ export async function findCatalogImages(
       vistas.add(f.url);
       out.push(f);
       if (out.length >= maxImages) return out;
+    }
+  }
+  return out;
+}
+
+export interface GtinCandidate {
+  productId: string;
+  name: string;
+  gtins: string[];
+  picture?: string;
+  permalink: string;
+}
+
+/**
+ * Codigos de barras dos produtos do catalogo que mais se parecem com este,
+ * para o vendedor CONFERIR e escolher -- nunca preenchidos sozinhos: um codigo
+ * errado casa o anuncio com outro produto. Usa a mesma busca das fotos
+ * (marca + modelo no dominio, sem pecas/acessorios).
+ */
+export async function findGtinCandidates(product: Pick<Product, 'title' | 'attrs'>, max = 5): Promise<GtinCandidate[]> {
+  const produtos = await searchCatalog({ ...product, attrs: { ...product.attrs, gtin: '' } }, max);
+  const account = await ensureToken();
+  const out: GtinCandidate[] = [];
+  for (const p of produtos) {
+    try {
+      const res = await request<ProductResponse>(`${ML_API}/products/${encodeURIComponent(p.id)}`, {
+        headers: { authorization: `Bearer ${account.accessToken}` },
+      });
+      const attr = (res.attributes ?? []).find((a) => a.id === 'GTIN');
+      const brutos = [attr?.value_name ?? '', ...(attr?.values ?? []).map((v) => v.name ?? '')];
+      const gtins = [...new Set(brutos.flatMap((v) => v.split(/[,;\s]+/)).map((v) => v.replace(/\D/g, ''))
+        .filter((v) => v.length >= 8))];
+      if (!gtins.length) continue;
+      out.push({
+        productId: p.id,
+        name: res.name?.trim() || p.name || p.id,
+        gtins,
+        picture: res.pictures?.[0]?.url,
+        permalink: res.permalink || `https://www.mercadolivre.com.br/p/${p.id}`,
+      });
+    } catch {
+      // produto sem detalhe acessivel: segue para o proximo
     }
   }
   return out;

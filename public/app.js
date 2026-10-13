@@ -110,6 +110,44 @@ $('[name="title"]').addEventListener('input', (ev) => {
 $('#novo').addEventListener('click', () => openForm(null));
 
 /**
+ * Codigo de barras do catalogo do ML, por marca + modelo. So sugere: o
+ * vendedor confere e clica em "Usar". Codigo errado casa o anuncio com outro
+ * produto, por isso nada e preenchido sem esse clique.
+ */
+$('#gtin-buscar').addEventListener('click', async (ev) => {
+  const form = $('#form-produto');
+  const lista = $('#gtin-lista');
+  const btn = ev.currentTarget;
+  btn.disabled = true;
+  lista.innerHTML = '<p class="muted">Procurando no catálogo do Mercado Livre...</p>';
+  try {
+    const r = await api('/mercadolivre/gtin-lookup', {
+      method: 'POST',
+      body: JSON.stringify({ title: form.title.value, brand: form.g_brand.value, model: form.g_model.value }),
+    });
+    lista.innerHTML = r.candidates.length
+      ? `<ul class="gtin-cands">${r.candidates.map((c) => `<li>
+          ${c.picture ? `<img src="${esc(c.picture)}" alt="" width="48" height="48" loading="lazy">` : ''}
+          <span><a href="${esc(c.permalink)}" target="_blank" rel="noopener">${esc(c.name)}</a><br>
+          ${c.gtins.map((g) => `<button type="button" data-gtin="${esc(g)}">Usar ${esc(g)}</button>`).join(' ')}</span>
+        </li>`).join('')}</ul>
+        <small class="muted">Escolha só se for exatamente o seu modelo (mesma capacidade, cor, versão).</small>`
+      : `<p class="muted">${esc(r.message)}</p>`;
+  } catch (err) {
+    lista.innerHTML = `<p class="erro">${esc(err.message)}</p>`;
+  } finally { btn.disabled = false; }
+});
+
+$('#gtin-lista').addEventListener('click', (ev) => {
+  const gtin = ev.target.dataset?.gtin;
+  if (!gtin) return;
+  const form = $('#form-produto');
+  form.g_gtin.value = gtin;
+  form.g_gtinMissingReason.value = '';
+  $('#gtin-lista').innerHTML = `<p class="muted">Código ${esc(gtin)} no campo. Clique em Salvar para gravar.</p>`;
+});
+
+/**
  * Traz os anuncios que ja estao na conta do ML. Cada um vira um produto ligado
  * ao anuncio original: melhore texto e fotos e clique em Publicar, que
  * atualiza o MESMO anuncio.
@@ -224,6 +262,7 @@ function openForm(product, { rolarParaMl = false } = {}) {
       else field.value = value ?? '';
     }
   }
+  $('#gtin-lista').innerHTML = '';
   $('#ai-input').value = '';
   $('#ai-saida').innerHTML = '';
   $('#ai-status').textContent = '';
