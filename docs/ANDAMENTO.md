@@ -47,7 +47,7 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | Atualizar anúncio existente no ML | **feito** — produto com anúncio publica com `PUT /items/:id` (mesmo anúncio); pausado é reativado; encerrado volta por `relist` (número novo) |
 | Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **92 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **100 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -65,6 +65,7 @@ O ML mudou bastante a API de publicação, e cada tentativa revelou uma regra no
 | 6 | `The attributes [GTIN] are required` | categoria exige **código de barras** | campo EAN no cadastro, com conferência do dígito verificador (`6dda794`) |
 | 7 | `The attributes [VOLTAGE] are required` | cada categoria tem **atributos próprios** | painel que pergunta ao ML o que a categoria exige e monta os campos (`7636ef0`) |
 | 8 | `shipping.lost_me1_by_user` — *"User has not mode me1"* (veio como `warning`, mas foi a única causa do 400) | o anúncio ia **sem bloco `shipping`**, e o ML escolheu sozinho o me1, que a conta não tem | **pré-checagem** (`preflight.ts`) lê os modos de envio da conta e manda `shipping` explícito: `me2` com `free_methods: []`; sem me2, "a combinar" com aviso de como ativar |
+| 9 | `item.location.invalid` — *"Field 'location' requires up to city level. [country.name: , state.name: RS, city.name: Lajeado]"* (classificado: veículo/imóvel) | a localização ia só com nomes, sem país e com o estado em sigla | `location.ts` converte UF/cidade/bairro nos **IDs do ML** (`/classified_locations/countries/BR` → `states/:id` → `cities/:id`), comparando nomes sem acento; bairro desconhecido vai só até a cidade |
 
 O que mudou de método no caminho, e vale manter:
 

@@ -131,3 +131,10 @@ test('a dica vem antes do texto do ML, e o detalhe cru e preservado', async () =
   assert.match(err.message, /Resposta do ML: api\.mercadolibre\.com respondeu 400/);
   assert.equal(err.detail, erroReal);
 });
+
+test('erro de localizacao (real, de um classificado) vira instrucao', () => {
+  const erro = { cause: [{ department: 'items', cause_id: 187, type: 'error', code: 'item.location.invalid',
+    references: ['item.location'],
+    message: "Field 'location' requires up to city level. [country.name: , state.name: RS, city.name: Lajeado]" }] };
+  assert.match(dicaDoErro(erro)!, /confira cidade e UF/);
+});

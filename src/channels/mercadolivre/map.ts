@@ -2,6 +2,7 @@ import { config } from '../../config.ts';
 import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import { ML_API } from './auth.ts';
+import type { MlLocation } from './location.ts';
 
 const FUEL: Record<string, string> = {
   flex: 'Flex', gasolina: 'Gasolina', etanol: 'Etanol/Alcool', diesel: 'Diesel',
@@ -189,13 +190,15 @@ export interface MlItemPayload {
   attributes: MlAttribute[];
   sale_terms?: MlAttribute[];
   shipping?: MlShipping;
-  location?: Record<string, unknown>;
+  location?: MlLocation;
 }
 
 export interface BuildOptions {
   shipping?: MlShipping;
   /** Tipo de anuncio escolhido entre os disponiveis para a conta; sem ele, o padrao do tipo de produto. */
   listingTypeId?: string;
+  /** Localizacao com os IDs do ML (location.ts); so classificados usam. */
+  location?: MlLocation;
 }
 
 export function buildItem(product: Product, categoryId?: string, opts: BuildOptions = {}): MlItemPayload {
@@ -215,16 +218,6 @@ export function buildItem(product: Product, categoryId?: string, opts: BuildOpti
     attributes: allAttributes(product),
     ...(isClassified ? {} : { sale_terms: saleTerms(product) }),
     ...(!isClassified && opts.shipping ? { shipping: opts.shipping } : {}),
-    ...(isClassified
-      ? {
-          location: {
-            address_line: [product.neighborhood, product.city].filter(Boolean).join(', '),
-            zip_code: (product.cep || config.seller.cep).replace(/\D/g, ''),
-            city: { name: product.city || config.seller.city },
-            state: { name: product.uf || config.seller.uf },
-            neighborhood: { name: product.neighborhood },
-          },
-        }
-      : {}),
+    ...(isClassified && opts.location ? { location: opts.location } : {}),
   };
 }

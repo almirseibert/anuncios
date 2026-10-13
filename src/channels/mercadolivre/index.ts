@@ -8,6 +8,7 @@ import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, listingTypeId, predictCategory } from './map.ts';
 import { preflight, type Preflight } from './preflight.ts';
 import { updateExisting } from './update.ts';
+import { resolveLocation } from './location.ts';
 import { photoIssues } from '../../services/images.ts';
 
 function validate(product: Product): ValidationIssue[] {
@@ -63,7 +64,9 @@ async function preparar(product: Product, token: string) {
   const categoryId = product.channelAttrs?.mercadolivre?.categoryId
     ?? await predictCategory(product.title, token);
   const pf = await preflight(product, categoryId, listingTypeId(product), token);
-  const payload = buildItem(product, categoryId, { shipping: pf.shipping, listingTypeId: pf.listingTypeId });
+  // Classificado (veiculo, imovel) vai com a localizacao em IDs do ML; sem ela o ML recusa.
+  const location = product.kind === 'geral' ? undefined : await resolveLocation(product, token);
+  const payload = buildItem(product, categoryId, { shipping: pf.shipping, listingTypeId: pf.listingTypeId, location });
   return { pf, payload };
 }
 

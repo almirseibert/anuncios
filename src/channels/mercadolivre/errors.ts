@@ -38,6 +38,8 @@ function outrasDicas(detail: unknown): string[] {
       dicas.add(`O ML exige Mercado Envios para esta conta ou categoria: ${ATIVAR_ENVIOS}.`);
     } else if (code.startsWith('shipping.') || c.department === 'shipping' || code.startsWith('item.shipping')) {
       dicas.add(`Problema no envio ("${msg || code}"): ${ATIVAR_ENVIOS}.`);
+    } else if (code.startsWith('item.location')) {
+      dicas.add('O ML nao aceitou a localizacao: confira cidade e UF (sigla, ex.: RS) no cadastro do produto.');
     } else if (code.includes('listing_type')) {
       dicas.add('O tipo de anuncio nao esta disponivel para sua conta nesta categoria.');
     } else if (code.startsWith('item.pictures') || code.includes('picture')) {
