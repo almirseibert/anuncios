@@ -138,3 +138,14 @@ test('erro de localizacao (real, de um classificado) vira instrucao', () => {
     message: "Field 'location' requires up to city level. [country.name: , state.name: RS, city.name: Lajeado]" }] };
   assert.match(dicaDoErro(erro)!, /confira cidade e UF/);
 });
+
+test('status do ML depois de criar: so "active" e publicado', async () => {
+  const { situacaoNoMl } = await import('../src/channels/mercadolivre/errors.ts');
+  assert.equal(situacaoNoMl('active').status, 'publicado');
+  assert.equal(situacaoNoMl(undefined).status, 'publicado');
+  assert.equal(situacaoNoMl('payment_required').status, 'rascunho');
+  assert.equal(situacaoNoMl('under_review').status, 'rascunho');
+  assert.equal(situacaoNoMl('paused').status, 'pausado');
+  assert.equal(situacaoNoMl('closed').status, 'encerrado');
+  assert.match(situacaoNoMl('qualquer').aviso!, /"qualquer"/);
+});

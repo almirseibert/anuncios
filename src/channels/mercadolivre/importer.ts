@@ -4,6 +4,7 @@ import { productInput, type ChannelAttrValue, type ProductInput } from '../../do
 import type { ListingStatus } from '../types.ts';
 import { ML_API, ensureToken } from './auth.ts';
 import { urlVariants } from './catalog.ts';
+import { situacaoNoMl } from './errors.ts';
 
 /**
  * Importa os anuncios que ja estao na conta do Mercado Livre, para melhorar
@@ -47,10 +48,7 @@ export interface MlItem {
 
 /** Status do ML -> status do listing aqui. */
 export function listingStatusFrom(status: string | undefined): ListingStatus {
-  if (status === 'active') return 'publicado';
-  if (status === 'paused') return 'pausado';
-  if (status === 'closed') return 'encerrado';
-  return 'erro'; // under_review, inactive: aparece no painel para voce olhar
+  return situacaoNoMl(status).status;
 }
 
 /** Atributos que o cadastro ja guarda em campos proprios (ou que o ML calcula). */

@@ -47,7 +47,7 @@ Sistema de cadastro único de produto que vira anúncio em várias plataformas. 
 | Atualizar anúncio existente no ML | **feito** — produto com anúncio publica com `PUT /items/:id` (mesmo anúncio); pausado é reativado; encerrado volta por `relist` (número novo) |
 | Fotos do catálogo do ML | busca por código de barras → marca + modelo no domínio do produto; peças e acessórios filtrados |
 
-Testes: **100 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
+Testes: **102 automatizados** (`npm test`), todos passando, mais verificação em navegador real a cada mudança de interface.
 
 ---
 
@@ -66,6 +66,7 @@ O ML mudou bastante a API de publicação, e cada tentativa revelou uma regra no
 | 7 | `The attributes [VOLTAGE] are required` | cada categoria tem **atributos próprios** | painel que pergunta ao ML o que a categoria exige e monta os campos (`7636ef0`) |
 | 8 | `shipping.lost_me1_by_user` — *"User has not mode me1"* (veio como `warning`, mas foi a única causa do 400) | o anúncio ia **sem bloco `shipping`**, e o ML escolheu sozinho o me1, que a conta não tem | **pré-checagem** (`preflight.ts`) lê os modos de envio da conta e manda `shipping` explícito: `me2` com `free_methods: []`; sem me2, "a combinar" com aviso de como ativar |
 | 9 | `item.location.invalid` — *"Field 'location' requires up to city level. [country.name: , state.name: RS, city.name: Lajeado]"* (classificado: veículo/imóvel) | a localização ia só com nomes, sem país e com o estado em sigla | `location.ts` converte UF/cidade/bairro nos **IDs do ML** (`/classified_locations/countries/BR` → `states/:id` → `cities/:id`), comparando nomes sem acento; bairro desconhecido vai só até a cidade |
+| ✅ | **Primeiro anúncio criado pela API (13/10/2026):** `MLB5379774493`, Toyota Etios 2017 (veículo, `silver`). Veio com `status: payment_required` | veículo paga tarifa de publicação no site do ML | `situacaoNoMl` (`errors.ts`): só `active` vira "publicado"; `payment_required`/`under_review` ficam como rascunho com o aviso, e o painel mostra "aguardando pagamento no ML" |
 
 O que mudou de método no caminho, e vale manter:
 
@@ -107,7 +108,8 @@ Não verificados contra o serviço real (este ambiente de desenvolvimento não a
 - [ ] **Título que o ML gera** a partir do `family_name` — conferir no primeiro anúncio publicado.
 - [ ] **Envio me2 contra o ML real** — formato de `/users/:id/shipping_preferences` e `available_listing_types` veio da documentação; o limite de R$ 79 do frete grátis obrigatório é o vigente conhecido, conferir na primeira publicação.
 - [ ] **Dimensões do pacote** — se a categoria exigir (`SELLER_PACKAGE_*`), o painel de atributos já as mostra, porque vêm marcadas como obrigatórias.
-- [ ] **Veículo e imóvel no ML** — ainda no modelo antigo (com `title`); nunca testados contra a API real.
+- [x] **Veículo no ML** — criado de verdade (`MLB5379774493`), com localização em IDs. Falta conferir se as fotos saíram do "processing-image" depois de alguns minutos (se não, o ML não conseguiu baixar de `/uploads`).
+- [ ] **Imóvel no ML** — mesmo caminho do veículo; ainda não testado contra a API real.
 - [ ] **"Melhorar foto" (Gemini de imagem)** — a chamada só foi testada até a validação da chave.
 - [ ] **Build do Docker** com a base `node:22-bookworm-slim` — validado na prática pelo deploy no Easypanel, que está funcionando.
 

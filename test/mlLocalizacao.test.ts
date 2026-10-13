@@ -39,6 +39,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   chamadas.push({ path: u.pathname, body: typeof raw === 'string' && raw.startsWith('{') ? JSON.parse(raw) : raw });
   if (u.pathname.includes('domain_discovery')) return Response.json([{ category_id: 'MLB1472' }]);
   if (u.pathname === '/items/validate') return new Response(null, { status: 204 });
+  // resposta real do ML ao criar o Etios: criado, mas aguardando a tarifa de veiculo
+  if (u.pathname === '/items') {
+    return Response.json({ id: 'MLB5379774493', status: 'payment_required', listing_type_id: 'silver',
+      permalink: 'http://carro.mercadolivre.com.br/MLB-5379774493-toyota-etios-15-hatch-cross-automatico-2017-sinistro-_JM' }, { status: 201 });
+  }
+  if (u.pathname.endsWith('/description')) return Response.json({}, { status: 201 });
   const corpo = ML[u.pathname];
   return corpo ? Response.json(corpo) : Response.json({ message: 'nao simulado' }, { status: 404 });
 }) as typeof fetch;
@@ -104,4 +110,18 @@ test('o payload do classificado leva a localizacao em IDs', async () => {
   const comum = await mercadoLivre.publish({ product: imovel({ kind: 'geral', attrs: {} }), dryRun: true });
   assert.ok(comum.status);
   assert.equal('location' in chamadas.filter((c) => c.path === '/items/validate').at(-1)!.body, false);
+});
+
+test('veiculo criado com payment_required nao aparece como publicado: avisa do pagamento', async () => {
+  const etios: Product = { ...imovel(), kind: 'veiculo', title: 'Toyota Etios 1.5 Hatch Cross Automatico 2017 Sinistro',
+    neighborhood: 'Universitário', attrs: { brand: 'Toyota', model: 'Etios HB Cross AT', version: '1.5',
+      yearModel: 2017, yearManufacture: 2016, km: 104000, fuel: 'gasolina', transmission: 'automatico' } };
+  const r = await mercadoLivre.publish({ product: etios, dryRun: false });
+  assert.equal(r.externalId, 'MLB5379774493');
+  assert.equal(r.status, 'rascunho');
+  assert.match(r.message!, /so vai ao ar depois que voce pagar a tarifa/);
+  // bairro que o ML nao lista: vai ate a cidade
+  const criado = chamadas.find((c) => c.path === '/items')!.body;
+  assert.equal(criado.location.city.id, 'TUxCQ0xBSjY0NjQ');
+  assert.equal(criado.location.neighborhood, undefined);
 });

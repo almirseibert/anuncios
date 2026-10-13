@@ -1,4 +1,4 @@
-import { ChannelError } from '../types.ts';
+import { ChannelError, type ListingStatus } from '../types.ts';
 
 /**
  * Onde cada atributo do ML e preenchido no nosso formulario. Quando a categoria
@@ -98,4 +98,34 @@ export function comDica(err: unknown, jaAvisados?: ReadonlySet<string>): unknown
   if (!(err instanceof ChannelError)) return err;
   const dica = dicaDoErro(err.detail, jaAvisados);
   return dica ? new ChannelError(`${dica}\nResposta do ML: ${err.message}`, err.detail) : err;
+}
+
+/**
+ * O que o status do anuncio no ML significa aqui. Criar nao e o mesmo que
+ * estar no ar: veiculo nasce "payment_required" (a tarifa do anuncio e paga no
+ * site do ML), e qualquer anuncio pode cair em revisao. Nesses casos o listing
+ * fica como rascunho, com o aviso do que fazer -- "publicado" seria mentira.
+ */
+export function situacaoNoMl(status: string | undefined): { status: ListingStatus; aviso?: string } {
+  switch (status) {
+    case undefined:
+    case '':
+    case 'active':
+      return { status: 'publicado' };
+    case 'payment_required':
+      return {
+        status: 'rascunho',
+        aviso: 'O ML criou o anuncio, mas ele so vai ao ar depois que voce pagar a tarifa de publicacao '
+          + '(cobrada em anuncio de veiculo). No site do ML, abra Vendas > Anuncios (ou o link do anuncio) '
+          + 'e conclua o pagamento.',
+      };
+    case 'under_review':
+      return { status: 'rascunho', aviso: 'O ML esta revisando o anuncio; ele entra no ar quando a revisao terminar.' };
+    case 'paused':
+      return { status: 'pausado', aviso: 'O anuncio esta pausado no ML.' };
+    case 'closed':
+      return { status: 'encerrado', aviso: 'O anuncio esta encerrado no ML.' };
+    default:
+      return { status: 'rascunho', aviso: `O anuncio existe, mas nao esta ativo no ML (status "${status}"): confira no site.` };
+  }
 }

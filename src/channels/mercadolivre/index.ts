@@ -3,7 +3,7 @@ import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import { ChannelError, type Channel, type PublishContext, type PublishResult, type ValidationIssue } from '../types.ts';
 import { buildDescription } from '../../services/templates.ts';
-import { comDica } from './errors.ts';
+import { comDica, situacaoNoMl } from './errors.ts';
 import { CHANNEL_ID, ML_API, ensureToken } from './auth.ts';
 import { buildItem, listingTypeId, predictCategory } from './map.ts';
 import { preflight, type Preflight } from './preflight.ts';
@@ -177,13 +177,15 @@ async function publish(ctx: PublishContext): Promise<PublishResult> {
       + 'Edite a descricao no painel do Mercado Livre ou publique de novo.';
   }
 
+  const situacao = situacaoNoMl(created.status);
   return {
-    status: 'publicado',
+    status: situacao.status,
     externalId: created.id,
     permalink: created.permalink,
     payload,
     result: created,
-    message: `${antes}anuncio ${created.id} criado${aviso}${lista('Atencao:', pf.avisos)}`,
+    message: `${antes}anuncio ${created.id} criado${aviso}`
+      + lista('Atencao:', [...(situacao.aviso ? [situacao.aviso] : []), ...pf.avisos]),
   };
 }
 

@@ -2,7 +2,7 @@ import { request } from '../../lib/http.ts';
 import type { Product } from '../../domain/product.ts';
 import type { PublishResult } from '../types.ts';
 import { buildDescription } from '../../services/templates.ts';
-import { comDica } from './errors.ts';
+import { comDica, situacaoNoMl } from './errors.ts';
 import { ML_API } from './auth.ts';
 import { allAttributes, saleTerms } from './map.ts';
 import type { MlItem } from './importer.ts';
@@ -103,9 +103,15 @@ export async function updateExisting(
     }
   }
 
+  // Pausado foi reativado acima; o resto (pagamento pendente, revisao) segue
+  // como o ML diz, com o aviso do que fazer.
+  const situacao = atual.status === 'paused' || atual.status === 'closed'
+    ? situacaoNoMl('active') : situacaoNoMl(atual.status);
+  if (situacao.aviso) avisos.push(situacao.aviso);
+
   return {
     result: {
-      status: 'publicado',
+      status: situacao.status,
       externalId: id,
       permalink,
       payload: enviado,

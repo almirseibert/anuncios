@@ -341,6 +341,13 @@ function photoCard(img, idx) {
     </figure>`;
 }
 
+/** Status do ML que significam "criado, mas fora do ar" (o motivo vem na mensagem da publicacao). */
+const ML_STATUS_PENDENTE = {
+  payment_required: 'aguardando pagamento no ML',
+  under_review: 'em revisão no ML',
+  inactive: 'inativo no ML',
+};
+
 async function openDetail(id) {
   const data = await api(`/products/${id}`);
   state.channels = data.channels.length ? data.channels : state.channels;
@@ -376,6 +383,8 @@ async function openDetail(id) {
             <span>${esc(c.label)}${c.label.includes(`(${c.mode})`) ? '' : ` <small class="muted">(${c.mode})</small>`}</span>
           </label>
           ${listing ? `<span class="pill ${listing.status}">${esc(listing.status)}</span>` : ''}
+          ${c.id === 'mercadolivre' && ML_STATUS_PENDENTE[listing?.result?.status]
+            ? `<span class="pill erro">${ML_STATUS_PENDENTE[listing.result.status]}</span>` : ''}
           ${listing?.externalId && c.id === 'mercadolivre'
             ? `<small class="muted">${esc(listing.externalId)} — publicar atualiza este mesmo anúncio${
               listing.status === 'encerrado' ? ' (encerrado: o ML republica)' : listing.status === 'pausado' ? ' e o reativa' : ''}</small>` : ''}
